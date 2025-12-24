@@ -41,7 +41,7 @@ export function isInsideWheel(x: number, y: number): boolean {
 
 interface WheelColor extends RGB {
   theta: number;
-  r: number;
+  radius: number;
   f: number;
 }
 
@@ -50,10 +50,10 @@ interface WheelColor extends RGB {
  * Returns null if outside the color area
  */
 export function wheelColorAt(x: number, y: number): WheelColor | null {
-  const r = radiusFromXY(x, y);
-  if (r > MODEL.R_color || r < MODEL.R_inner) return null;
+  const radius = radiusFromXY(x, y);
+  if (radius > MODEL.R_color || radius < MODEL.R_inner) return null;
 
-  const f = clamp01((r - MODEL.R_inner) / (MODEL.R_color - MODEL.R_inner));
+  const f = clamp01((radius - MODEL.R_inner) / (MODEL.R_color - MODEL.R_inner));
   const theta = thetaDegFromXY(x, y);
 
   // Radial profile:
@@ -68,7 +68,7 @@ export function wheelColorAt(x: number, y: number): WheelColor | null {
   const l2 = clamp01(l - 0.06 * outerBoost);
 
   const rgb = hslToRgb(theta, s2, l2);
-  return { theta, r, f, ...rgb };
+  return { theta, radius, f, ...rgb };
 }
 
 // -------------------- Bitmap Rendering --------------------
