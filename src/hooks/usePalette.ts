@@ -4,7 +4,8 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { PaletteSwatch, TintShadeStep, RGB, HSL } from '../types';
-import { rgbToHex, rgbToHsl } from '../utils/colorConversions';
+import { rgbToHex } from '../utils/colorMath';
+import { rgbToHsl } from '../utils/colorConversions';
 import { hueName } from '../utils/artistDescriptors';
 
 interface SwatchInput {
