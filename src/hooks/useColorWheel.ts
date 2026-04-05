@@ -1,5 +1,11 @@
 /**
- * Custom hook for color wheel state management
+ * Custom hook for color wheel canvas, pointer interaction, and sampling.
+ *
+ * Separated concerns:
+ * - Canvas lifecycle & bitmap (one-time init, resize observer)
+ * - Pointer events & sampling
+ * - Palette management (delegated to usePalette)
+ * - Tint/shade computation (delegated to useTintShades)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -39,11 +45,12 @@ import {
   relLuminanceWcagFromY,
   contrastRatio,
   cctMcCamyFromXy,
-  mixLinearRGB,
   clamp01,
 } from '../utils';
 import { hueName, temperatureLabel } from '../utils/artistDescriptors';
 import { harmonyAngles as getHarmonyAngles } from '../utils/harmonies';
+import { usePalette } from './usePalette';
+import { useTintShades } from './useTintShades';
 
 interface UseColorWheelOptions {
   showDecor?: boolean;
@@ -54,16 +61,13 @@ interface UseColorWheelOptions {
 }
 
 interface UseColorWheelReturn {
-  // Refs
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   stageRef: React.RefObject<HTMLDivElement | null>;
 
-  // State
   sample: Sample | null;
   locked: boolean;
   stateLabel: string;
 
-  // Palette management
   palette: PaletteSwatch[];
   tints: TintShadeStep[];
   addToPalette: () => void;
@@ -74,11 +78,8 @@ interface UseColorWheelReturn {
   paletteCss: string;
   copyPaletteCss: () => Promise<void>;
 
-  // Event handlers
   onPointerMove: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   onPointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => void;
-
-  // Actions
   unlock: () => void;
 }
 
@@ -91,21 +92,39 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     tintSteps = 7,
   } = options;
 
-  // Canvas refs
+  // ── Canvas refs ──────────────────────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const offCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const offCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const tfRef = useRef<WheelTransform>({ scale: 1, dx: 0, dy: 0, dpr: 1, w: 0, h: 0 });
+  const bitmapReady = useRef(false);
 
-  // State
+  // ── Pointer / interaction state ──────────────────────────────────
   const [locked, setLocked] = useState(false);
   const [lockPt, setLockPt] = useState<Point | null>(null);
   const [pointerPt, setPointerPt] = useState<Point | null>(null);
   const [sample, setSample] = useState<Sample | null>(null);
-  const [palette, setPalette] = useState<PaletteSwatch[]>([]);
 
-  // Coordinate transforms
+  // ── Extracted hooks ──────────────────────────────────────────────
+  const {
+    palette,
+    paletteCss,
+    addSwatch,
+    addHarmonySwatches,
+    addTintSwatch,
+    removeSwatch,
+    clearPalette,
+    copyPaletteCss,
+  } = usePalette();
+
+  const tints = useTintShades(
+    sample?.rgb ?? null,
+    sample?.hex ?? null,
+    tintSteps
+  );
+
+  // ── Coordinate helpers (stable — no deps) ────────────────────────
   const canvasToOff = useCallback((pt: Point): Point => {
     const t = tfRef.current;
     return { x: (pt.x - t.dx) / t.scale, y: (pt.y - t.dy) / t.scale };
@@ -120,12 +139,10 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     const canvas = canvasRef.current!;
     const t = tfRef.current;
     const rect = canvas.getBoundingClientRect();
-    const xCss = e.clientX - rect.left;
-    const yCss = e.clientY - rect.top;
-    return { x: xCss * t.dpr, y: yCss * t.dpr };
+    return { x: (e.clientX - rect.left) * t.dpr, y: (e.clientY - rect.top) * t.dpr };
   }, []);
 
-  // Read RGB from offscreen canvas
+  // ── Read pixel from offscreen bitmap ─────────────────────────────
   const readOffRgb = useCallback((ix: number, iy: number): RGB => {
     const offCtx = offCtxRef.current;
     if (!offCtx) return { r: 255, g: 255, b: 255 };
@@ -133,11 +150,10 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     return { r: px[0], g: px[1], b: px[2] };
   }, []);
 
-  // Sample color at canvas position
+  // ── Color sampling ───────────────────────────────────────────────
   const sampleAtCanvas = useCallback(
     (ptCanvas: Point): Sample | null => {
-      const offCtx = offCtxRef.current;
-      if (!offCtx) return null;
+      if (!offCtxRef.current) return null;
 
       const ptOff = canvasToOff(ptCanvas);
       if (ptOff.x < 0 || ptOff.y < 0 || ptOff.x >= OFF_SIZE || ptOff.y >= OFF_SIZE) return null;
@@ -207,45 +223,26 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
       }
 
       return {
-        xCanvas: ptCanvas.x,
-        yCanvas: ptCanvas.y,
-        xOff: ptOff.x,
-        yOff: ptOff.y,
-        theta,
-        r: rr,
-        f,
-        inside,
-        rgb: { r, g, b },
-        hex,
-        cssRgb,
-        hueLabel,
-        temp,
-        valueProxy,
-        chromaProxy,
-        hsl,
-        hsv,
-        hwb,
-        cmyk,
-        linRgb,
-        xyz,
-        xyY,
-        uvp,
-        lab,
-        lch,
-        oklab,
-        oklch,
-        relLum,
-        contrastWhite,
-        contrastBlack,
-        cct,
+        xCanvas: ptCanvas.x, yCanvas: ptCanvas.y,
+        xOff: ptOff.x, yOff: ptOff.y,
+        theta, r: rr, f, inside,
+        rgb: { r, g, b }, hex, cssRgb,
+        hueLabel, temp, valueProxy, chromaProxy,
+        hsl, hsv, hwb, cmyk,
+        linRgb, xyz, xyY, uvp,
+        lab, lch, oklab, oklch,
+        relLum, contrastWhite, contrastBlack, cct,
         comp,
       };
     },
     [canvasToOff, readOffRgb]
   );
 
-  // Drawing function
-  const draw = useCallback(() => {
+  // ── Drawing (uses a ref so effects don't re-fire the bitmap init) ─
+  const drawRef = useRef<() => void>(() => {});
+
+  // Keep drawRef.current in sync with latest closure values
+  drawRef.current = () => {
     const canvas = canvasRef.current;
     const off = offCanvasRef.current;
     if (!canvas || !off) return;
@@ -277,10 +274,14 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
         drawGuides(ctx, t, centerC, activePt, sample.r, harmonyItems, offToCanvas);
       }
     }
-  }, [showDecor, showGuides, showHarmony, harmonyType, locked, lockPt, pointerPt, sample, offToCanvas]);
+  };
 
-  // Resize and initial draw
-  const resizeAndDraw = useCallback(() => {
+  const schedDraw = useCallback(() => {
+    requestAnimationFrame(() => drawRef.current());
+  }, []);
+
+  // ── Resize (recalculate transform, then redraw — no bitmap re-render) ─
+  const resize = useCallback(() => {
     const canvas = canvasRef.current;
     const stage = stageRef.current;
     if (!canvas || !stage) return;
@@ -297,10 +298,10 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     const dy = (canvas.height - h) / 2;
 
     tfRef.current = { scale: s, dx, dy, dpr, w, h };
-    draw();
-  }, [draw]);
+    drawRef.current();
+  }, []);
 
-  // Initialize offscreen canvas
+  // ── One-time bitmap initialisation (runs exactly once) ───────────
   useEffect(() => {
     const off = document.createElement('canvas');
     off.width = OFF_SIZE;
@@ -316,43 +317,45 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
 
     offCanvasRef.current = off;
     offCtxRef.current = ctx;
+    bitmapReady.current = true;
 
-    resizeAndDraw();
-  }, [resizeAndDraw]);
+    resize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Resize observer
+  // ── Resize observer ──────────────────────────────────────────────
   useEffect(() => {
-    const ro = new ResizeObserver(() => resizeAndDraw());
+    const ro = new ResizeObserver(() => resize());
     if (stageRef.current) ro.observe(stageRef.current);
     return () => ro.disconnect();
-  }, [resizeAndDraw]);
+  }, [resize]);
 
-  // Redraw on state changes
+  // ── Redraw when visual options or pointer state change ───────────
   useEffect(() => {
-    requestAnimationFrame(draw);
-  }, [draw]);
+    schedDraw();
+  }, [showDecor, showGuides, showHarmony, harmonyType, locked, lockPt, pointerPt, sample, schedDraw]);
 
-  // Escape key handler
+  // ── Escape to unlock ─────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       setLocked(false);
       setLockPt(null);
-      requestAnimationFrame(draw);
+      schedDraw();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draw]);
+  }, [schedDraw]);
 
-  // Event handlers
+  // ── Pointer events ───────────────────────────────────────────────
   const onPointerMove = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (locked) return;
       const pt = eventToCanvas(e);
       setPointerPt(pt);
       setSample(sampleAtCanvas(pt));
-      requestAnimationFrame(draw);
     },
-    [eventToCanvas, sampleAtCanvas, draw]
+    [eventToCanvas, sampleAtCanvas, locked]
   );
 
   const onPointerDown = useCallback(
@@ -366,145 +369,55 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
         setLocked(false);
         setLockPt(null);
       }
-      requestAnimationFrame(draw);
     },
-    [eventToCanvas, sampleAtCanvas, draw, locked]
+    [eventToCanvas, sampleAtCanvas, locked]
   );
 
   const unlock = useCallback(() => {
     setLocked(false);
     setLockPt(null);
-    requestAnimationFrame(draw);
-  }, [draw]);
+  }, []);
 
-  // Computed values
-  const stateLabel = useMemo(() => {
-    if (locked) return 'Locked';
-    return sample?.inside ? 'Hover (inside wheel)' : 'Hover';
-  }, [locked, sample?.inside]);
-
-  // Tints and shades
-  const tints = useMemo((): TintShadeStep[] => {
-    if (!sample) return [];
-
-    const base = sample.rgb;
-    const white = { r: 255, g: 255, b: 255 };
-    const black = { r: 0, g: 0, b: 0 };
-
-    const steps = Math.max(3, Math.min(11, tintSteps));
-    const half = Math.floor(steps / 2);
-
-    const arr: TintShadeStep[] = [];
-
-    for (let i = half; i >= 1; i--) {
-      const tt = i / (half + 1);
-      const rgb = mixLinearRGB(base, white, tt);
-      arr.push({ label: `Tint ${i}`, rgb, hex: rgbToHex(rgb.r, rgb.g, rgb.b) });
-    }
-
-    arr.push({ label: 'Base', rgb: base, hex: sample.hex });
-
-    for (let i = 1; i <= half; i++) {
-      const tt = i / (half + 1);
-      const rgb = mixLinearRGB(base, black, tt);
-      arr.push({ label: `Shade ${i}`, rgb, hex: rgbToHex(rgb.r, rgb.g, rgb.b) });
-    }
-
-    return arr;
-  }, [sample, tintSteps]);
-
-  // Palette management
+  // ── Palette bridge ───────────────────────────────────────────────
   const addToPalette = useCallback(() => {
     if (!sample) return;
-    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const sw: PaletteSwatch = {
-      id,
-      hex: sample.hex,
+    addSwatch({
       rgb: sample.rgb,
+      hex: sample.hex,
       hsl: sample.hsl,
-      name: `${sample.hueLabel} ${sample.theta.toFixed(0)}°`,
-    };
-    setPalette((prev) => {
-      if (prev.some((p) => p.hex.toLowerCase() === sw.hex.toLowerCase())) return prev;
-      return [sw, ...prev].slice(0, 24);
+      hueLabel: sample.hueLabel,
+      theta: sample.theta,
     });
-  }, [sample]);
+  }, [sample, addSwatch]);
 
   const addHarmonyToPalette = useCallback(() => {
     if (!sample || !sample.inside) return;
     const rr = sample.r;
     const items = getHarmonyAngles(sample.theta, harmonyType);
 
-    const newSwatches: PaletteSwatch[] = [];
-    for (const it of items) {
+    const swatches = items.map((it) => {
       const rad = (it.a * Math.PI) / 180;
       const dx = Math.sin(rad);
       const dy = -Math.cos(rad);
       const ptOff = { x: MODEL.cx + dx * rr, y: MODEL.cy + dy * rr };
       const ix = Math.max(0, Math.min(OFF_SIZE - 1, Math.round(ptOff.x)));
       const iy = Math.max(0, Math.min(OFF_SIZE - 1, Math.round(ptOff.y)));
-      const { r, g, b } = readOffRgb(ix, iy);
-      const hex = rgbToHex(r, g, b);
-      const hsl = rgbToHsl(r, g, b);
-      newSwatches.push({
-        id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        hex,
-        rgb: { r, g, b },
-        hsl,
-        name: `${it.label} ${hueName(it.a)} ${it.a.toFixed(0)}°`,
-      });
-    }
-
-    setPalette((prev) => {
-      const merged = [...newSwatches, ...prev];
-      const uniq: PaletteSwatch[] = [];
-      for (const s of merged) {
-        if (!uniq.some((u) => u.hex.toLowerCase() === s.hex.toLowerCase())) uniq.push(s);
-      }
-      return uniq.slice(0, 24);
+      return { label: it.label, angle: it.a, rgb: readOffRgb(ix, iy) };
     });
-  }, [sample, harmonyType, readOffRgb]);
 
-  const addTintToPalette = useCallback((tint: TintShadeStep) => {
-    const sw: PaletteSwatch = {
-      id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      hex: tint.hex,
-      rgb: tint.rgb,
-      hsl: rgbToHsl(tint.rgb.r, tint.rgb.g, tint.rgb.b),
-      name: tint.label,
-    };
-    setPalette((prev) => {
-      if (prev.some((p) => p.hex.toLowerCase() === sw.hex.toLowerCase())) return prev;
-      return [sw, ...prev].slice(0, 24);
-    });
-  }, []);
+    addHarmonySwatches(swatches);
+  }, [sample, harmonyType, readOffRgb, addHarmonySwatches]);
 
-  const removeSwatch = useCallback((id: string) => {
-    setPalette((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  const addTintToPalette = useCallback(
+    (tint: TintShadeStep) => addTintSwatch(tint),
+    [addTintSwatch]
+  );
 
-  const clearPalette = useCallback(() => {
-    setPalette([]);
-  }, []);
-
-  const paletteCss = useMemo(() => {
-    if (palette.length === 0) return '';
-    const lines = palette
-      .slice()
-      .reverse()
-      .map((p, i) => `  --swatch-${String(i + 1).padStart(2, '0')}: ${p.hex}; /* ${p.name} */`);
-    return `:root\n{\n${lines.join('\n')}\n}`;
-  }, [palette]);
-
-  const copyPaletteCss = useCallback(async () => {
-    if (paletteCss) {
-      try {
-        await navigator.clipboard.writeText(paletteCss);
-      } catch {
-        // Ignore clipboard errors
-      }
-    }
-  }, [paletteCss]);
+  // ── Computed labels ──────────────────────────────────────────────
+  const stateLabel = useMemo(() => {
+    if (locked) return 'Locked';
+    return sample?.inside ? 'Hover (inside wheel)' : 'Hover';
+  }, [locked, sample?.inside]);
 
   return {
     canvasRef,

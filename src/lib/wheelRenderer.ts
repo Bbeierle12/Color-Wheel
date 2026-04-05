@@ -56,16 +56,31 @@ export function wheelColorAt(x: number, y: number): WheelColor | null {
   const f = clamp01((radius - MODEL.R_inner) / (MODEL.R_color - MODEL.R_inner));
   const theta = thetaDegFromXY(x, y);
 
-  // Radial profile:
-  // - inner = lighter tints (higher L)
-  // - outer = more saturated and slightly darker
-  const s = clamp01(Math.pow(f, 1.25));
-  const l = clamp01(0.92 - 0.42 * Math.pow(f, 0.85));
+  // Radial colour profile (artist-tuned):
+  //   f = 0 (inner edge) → nearly white tint
+  //   f = 1 (outer edge) → fully saturated, slightly dark
+  //
+  // Saturation curve: pow(f, 1.25) gives a gentle ramp—keeps the
+  // inner ~25% visually light before colour builds.
+  const SAT_GAMMA = 1.25;
+  const s = clamp01(Math.pow(f, SAT_GAMMA));
 
-  // Boost outer rim slightly
-  const outerBoost = f > 0.84 ? (f - 0.84) / (1 - 0.84) : 0;
-  const s2 = clamp01(s + 0.22 * outerBoost);
-  const l2 = clamp01(l - 0.06 * outerBoost);
+  // Lightness curve: starts at 0.92 (near-white) and drops 0.42
+  // over the radius. The 0.85 gamma keeps mid-tones lighter than linear.
+  const L_START = 0.92;
+  const L_DROP = 0.42;
+  const L_GAMMA = 0.85;
+  const l = clamp01(L_START - L_DROP * Math.pow(f, L_GAMMA));
+
+  // Outer-rim boost: the outermost 16% of the radius (f > 0.84)
+  // gets extra saturation (+0.22 max) and slightly lower lightness
+  // (−0.06 max) so the rim "pops" against the gradient.
+  const RIM_THRESHOLD = 0.84;
+  const RIM_SAT_BOOST = 0.22;
+  const RIM_L_DROP = 0.06;
+  const outerBoost = f > RIM_THRESHOLD ? (f - RIM_THRESHOLD) / (1 - RIM_THRESHOLD) : 0;
+  const s2 = clamp01(s + RIM_SAT_BOOST * outerBoost);
+  const l2 = clamp01(l - RIM_L_DROP * outerBoost);
 
   const rgb = hslToRgb(theta, s2, l2);
   return { theta, radius, f, ...rgb };

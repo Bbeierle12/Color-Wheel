@@ -57,6 +57,8 @@ export function ColorWheel() {
           <canvas
             ref={canvasRef}
             className="block w-full h-full"
+            role="img"
+            aria-label="Interactive artist color wheel. Click to lock a color, move to explore."
             onPointerMove={onPointerMove}
             onPointerDown={onPointerDown}
           />
@@ -90,5 +92,3 @@ export function ColorWheel() {
     </div>
   );
 }
-
-export default ColorWheel;

@@ -22,6 +22,21 @@ import { clamp01 } from './colorMath';
 // -------------------- HSL/HSV/HWB Conversions --------------------
 
 /**
+ * Compute hue (0-360) from normalised RGB channels (each 0-1).
+ * Shared by rgbToHsl, rgbToHsv, and rgbToHwb to avoid duplication.
+ */
+function hueFromChannels(r: number, g: number, b: number, max: number, d: number): number {
+  if (d === 0) return 0;
+  let h: number;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60;
+  if (h < 0) h += 360;
+  return h;
+}
+
+/**
  * Convert HSL to RGB
  */
 export function hslToRgb(h: number, s: number, l: number): RGB {
@@ -76,15 +91,7 @@ export function rgbToHsl(r: number, g: number, b: number): HSL {
   const min = Math.min(r, g, b);
   const d = max - min;
 
-  let h = 0;
-  if (d !== 0) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-    if (h < 0) h += 360;
-  }
-
+  const h = hueFromChannels(r, g, b, max, d);
   const l = (max + min) / 2;
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
 
@@ -103,15 +110,7 @@ export function rgbToHsv(r: number, g: number, b: number): HSV {
   const min = Math.min(r, g, b);
   const d = max - min;
 
-  let h = 0;
-  if (d !== 0) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-    if (h < 0) h += 360;
-  }
-
+  const h = hueFromChannels(r, g, b, max, d);
   const v = max;
   const s = max === 0 ? 0 : d / max;
 
@@ -127,10 +126,9 @@ export function rgbToHwb(r: number, g: number, b: number): HWB {
     bb = b / 255;
   const max = Math.max(rr, gg, bb);
   const min = Math.min(rr, gg, bb);
-  const hsv = rgbToHsv(r, g, b);
-  const w = min;
-  const bl = 1 - max;
-  return { h: hsv.h, w, b: bl };
+  const d = max - min;
+  const h = hueFromChannels(rr, gg, bb, max, d);
+  return { h, w: min, b: 1 - max };
 }
 
 /**
@@ -344,7 +342,9 @@ export function relLuminanceWcagFromY(Y: number): number {
 }
 
 /**
- * Calculate WCAG contrast ratio between two luminance values
+ * Calculate WCAG contrast ratio between two relative luminance values.
+ * Order of arguments does not matter — the lighter value is determined internally.
+ * Returns a value >= 1 (1:1 = identical, 21:1 = black vs white).
  */
 export function contrastRatio(L1: number, L2: number): number {
   const a = Math.max(L1, L2);
