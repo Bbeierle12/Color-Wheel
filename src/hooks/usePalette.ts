@@ -31,6 +31,8 @@ export interface UsePaletteReturn {
   removeSwatch: (id: string) => void;
   clearPalette: () => void;
   copyPaletteCss: () => Promise<void>;
+  /** Replace the entire palette with an array of hex strings (e.g. from a saved combo) */
+  loadColors: (hexColors: string[]) => void;
 }
 
 const MAX_SWATCHES = 24;
@@ -97,6 +99,28 @@ export function usePalette(): UsePaletteReturn {
     setPalette([]);
   }, []);
 
+  const loadColors = useCallback((hexColors: string[]) => {
+    const swatches: PaletteSwatch[] = hexColors
+      .slice(0, MAX_SWATCHES)
+      .map((hex) => {
+        const clean = hex.replace(/^#/, '');
+        const n = parseInt(clean, 16);
+        const r = (n >> 16) & 0xff;
+        const g = (n >> 8) & 0xff;
+        const b = n & 0xff;
+        const rgb: RGB = { r, g, b };
+        const hsl = rgbToHsl(r, g, b);
+        return {
+          id: makeId(),
+          hex: rgbToHex(r, g, b),
+          rgb,
+          hsl,
+          name: `${hueName(hsl.h)} ${hsl.h.toFixed(0)}°`,
+        };
+      });
+    setPalette(swatches);
+  }, []);
+
   const paletteCss = useMemo(() => {
     if (palette.length === 0) return '';
     const lines = palette
@@ -124,5 +148,6 @@ export function usePalette(): UsePaletteReturn {
     removeSwatch,
     clearPalette,
     copyPaletteCss,
+    loadColors,
   };
 }

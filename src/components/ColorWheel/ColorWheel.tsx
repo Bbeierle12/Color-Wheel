@@ -15,6 +15,7 @@ import type { HarmonyType } from '../../types';
 import { useColorWheel } from '../../hooks/useColorWheel';
 import { Sidebar } from './Sidebar';
 import { MixingPad } from '../MixingPad';
+import { ColorLibrary } from '../ColorLibrary';
 
 export function ColorWheel() {
   const [showDecor, setShowDecor] = useState(true);
@@ -37,6 +38,7 @@ export function ColorWheel() {
     clearPalette,
     paletteCss,
     copyPaletteCss,
+    loadColors,
     onPointerMove,
     onPointerDown,
   } = useColorWheel({
@@ -51,7 +53,7 @@ export function ColorWheel() {
   const selectedRgb = sample?.inside ? sample.rgb : null;
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900">
+    <div className="min-h-full bg-zinc-50">
       <div className="mx-auto max-w-[1700px] p-4 grid grid-cols-1 lg:grid-cols-[minmax(320px,1fr)_560px] gap-4">
         {/* Left column: canvas + mixing pad stacked */}
         <div className="flex flex-col gap-4">
@@ -73,6 +75,9 @@ export function ColorWheel() {
 
           {/* Paint mixing pad */}
           <MixingPad selectedColor={selectedRgb} />
+
+          {/* Persistent color combo library */}
+          <ColorLibrary palette={palette} onRecall={loadColors} />
         </div>
 
         {/* Sidebar */}

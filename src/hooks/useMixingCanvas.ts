@@ -14,9 +14,9 @@ import type { RGB } from '../types';
 import { depositPaint } from '../utils/paintMixing';
 import { rgbToHex } from '../utils/colorMath';
 
-// ── Constants ──────────────────────────────────────────────────────
-const PAD_W = 600;
-const PAD_H = 400;
+// ── Default dimensions ─────────────────────────────────────────────
+const DEFAULT_PAD_W = 600;
+const DEFAULT_PAD_H = 400;
 
 const MIN_BRUSH_R = 4;
 const MAX_BRUSH_R = 28;
@@ -75,8 +75,16 @@ function texHash(x: number, y: number): number {
   return ((h >>> 16) ^ h) & 0xff;
 }
 
+interface UseMixingCanvasOptions {
+  width?: number;
+  height?: number;
+}
+
 // ── Hook ───────────────────────────────────────────────────────────
-export function useMixingCanvas(): MixingCanvasState {
+export function useMixingCanvas(opts: UseMixingCanvasOptions = {}): MixingCanvasState {
+  const PAD_W = opts.width ?? DEFAULT_PAD_W;
+  const PAD_H = opts.height ?? DEFAULT_PAD_H;
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
   const lastPt = useRef<{ x: number; y: number } | null>(null);
@@ -109,14 +117,14 @@ export function useMixingCanvas(): MixingCanvasState {
     if (!ctx) return;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, PAD_W, PAD_H);
-  }, [getCtx]);
+  }, [getCtx, PAD_W, PAD_H]);
 
   const fillCanvas = useCallback((rgb: RGB) => {
     const ctx = getCtx();
     if (!ctx) return;
     ctx.fillStyle = `rgb(${rgb.r} ${rgb.g} ${rgb.b})`;
     ctx.fillRect(0, 0, PAD_W, PAD_H);
-  }, [getCtx]);
+  }, [getCtx, PAD_W, PAD_H]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -124,7 +132,7 @@ export function useMixingCanvas(): MixingCanvasState {
     canvas.width = PAD_W;
     canvas.height = PAD_H;
     clearCanvas();
-  }, [clearCanvas]);
+  }, [clearCanvas, PAD_W, PAD_H]);
 
   // ── Sample pixel at coordinate ───────────────────────────────────
   const sampleAt = useCallback((x: number, y: number): RGB => {
@@ -134,7 +142,7 @@ export function useMixingCanvas(): MixingCanvasState {
     const iy = Math.max(0, Math.min(PAD_H - 1, Math.round(y)));
     const px = ctx.getImageData(ix, iy, 1, 1).data;
     return { r: px[0], g: px[1], b: px[2] };
-  }, []);
+  }, [getCtx, PAD_W, PAD_H]);
 
   // ── Stamp a single brush dab (tool shape × medium behavior) ──────
   const stamp = useCallback(
@@ -323,7 +331,7 @@ export function useMixingCanvas(): MixingCanvasState {
 
       ctx.putImageData(imgData, x0, y0);
     },
-    []
+    [PAD_W, PAD_H]
   );
 
   // ── Interpolate stamps along a stroke segment ────────────────────
@@ -368,7 +376,7 @@ export function useMixingCanvas(): MixingCanvasState {
       x: ((e.clientX - rect.left) / rect.width) * PAD_W,
       y: ((e.clientY - rect.top) / rect.height) * PAD_H,
     };
-  }, []);
+  }, [PAD_W, PAD_H]);
 
   // ── Pointer handlers ─────────────────────────────────────────────
   const onPointerDown = useCallback(

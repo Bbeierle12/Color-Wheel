@@ -77,6 +77,7 @@ interface UseColorWheelReturn {
   clearPalette: () => void;
   paletteCss: string;
   copyPaletteCss: () => Promise<void>;
+  loadColors: (hexColors: string[]) => void;
 
   onPointerMove: (e: React.PointerEvent<HTMLCanvasElement>) => void;
   onPointerDown: (e: React.PointerEvent<HTMLCanvasElement>) => void;
@@ -116,6 +117,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     removeSwatch,
     clearPalette,
     copyPaletteCss,
+    loadColors,
   } = usePalette();
 
   const tints = useTintShades(
@@ -434,6 +436,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     clearPalette,
     paletteCss,
     copyPaletteCss,
+    loadColors,
     onPointerMove,
     onPointerDown,
     unlock,
