@@ -14,6 +14,7 @@ import { useState } from 'react';
 import type { HarmonyType } from '../../types';
 import { useColorWheel } from '../../hooks/useColorWheel';
 import { Sidebar } from './Sidebar';
+import { MixingPad } from '../MixingPad';
 
 export function ColorWheel() {
   const [showDecor, setShowDecor] = useState(true);
@@ -46,22 +47,32 @@ export function ColorWheel() {
     tintSteps,
   });
 
+  // Bridge the wheel's currently-sampled RGB to the mixing pad
+  const selectedRgb = sample?.inside ? sample.rgb : null;
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900">
       <div className="mx-auto max-w-[1700px] p-4 grid grid-cols-1 lg:grid-cols-[minmax(320px,1fr)_560px] gap-4">
-        {/* Canvas container */}
-        <div
-          ref={stageRef}
-          className="relative bg-white border border-zinc-200 rounded-2xl overflow-hidden min-h-[620px]"
-        >
-          <canvas
-            ref={canvasRef}
-            className="block w-full h-full"
-            role="img"
-            aria-label="Interactive artist color wheel. Click to lock a color, move to explore."
-            onPointerMove={onPointerMove}
-            onPointerDown={onPointerDown}
-          />
+        {/* Left column: canvas + mixing pad stacked */}
+        <div className="flex flex-col gap-4">
+          {/* Color wheel canvas */}
+          <div
+            ref={stageRef}
+            className="relative bg-white border border-zinc-200 rounded-2xl overflow-hidden min-h-[620px]"
+          >
+            <canvas
+              ref={canvasRef}
+              className="block w-full h-full"
+              style={{ touchAction: 'none' }}
+              role="img"
+              aria-label="Interactive artist color wheel. Click to lock a color, move to explore."
+              onPointerMove={onPointerMove}
+              onPointerDown={onPointerDown}
+            />
+          </div>
+
+          {/* Paint mixing pad */}
+          <MixingPad selectedColor={selectedRgb} />
         </div>
 
         {/* Sidebar */}
