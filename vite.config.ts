@@ -9,5 +9,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './tests/setup.ts',
+    // A machine-wide NODE_ENV=production would make Vitest load React's
+    // production build, which has no act(); component tests then throw
+    // "React.act is not a function". Pin the test environment explicitly.
+    env: { NODE_ENV: 'test' },
   },
 })
