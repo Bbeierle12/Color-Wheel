@@ -3,6 +3,7 @@
  */
 
 import type { PaletteSwatch, TintShadeStep, Sample, HarmonyType } from '../../types';
+import { PaletteDepth } from '../DepthWheel/PaletteDepth';
 
 interface PaletteManagerProps {
   sample: Sample | null;
@@ -137,6 +138,9 @@ export function PaletteManager({
           </button>
         ))}
       </div>
+
+      {/* Which pairs will float or sink against each other */}
+      <PaletteDepth palette={palette} />
 
       {/* CSS preview */}
       {paletteCss && (

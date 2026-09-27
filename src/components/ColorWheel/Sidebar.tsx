@@ -7,6 +7,7 @@ import { fmt } from '../../utils/colorMath';
 import { HARMONY_TYPES } from '../../utils/harmonies';
 import { SwatchDisplay } from './SwatchDisplay';
 import { PaletteManager } from './PaletteManager';
+import { SampleDepth } from '../DepthWheel/SampleDepth';
 
 interface SidebarProps {
   sample: Sample | null;
@@ -120,6 +121,9 @@ export function Sidebar({
 
         <div className="text-zinc-500">CSS</div>
         <div className="text-right font-mono">{sample ? sample.cssRgb : '—'}</div>
+
+        {/* Chromostereopsis depth (shares the eye model with the Depth tab) */}
+        <SampleDepth sample={sample} />
 
         {/* Harmony section */}
         <div className="col-span-2 mt-2 text-[11px] uppercase tracking-wider text-zinc-500">
