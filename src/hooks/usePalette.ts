@@ -22,11 +22,22 @@ interface HarmonySwatchInput {
   rgb: RGB;
 }
 
+/** A resolved scheme handle to add as a swatch. */
+export interface SchemeSwatchInput {
+  rgb: RGB;
+  hex: string;
+  hsl: HSL;
+  name: string;
+  role?: string;
+}
+
 export interface UsePaletteReturn {
   palette: PaletteSwatch[];
   paletteCss: string;
   addSwatch: (input: SwatchInput) => void;
   addHarmonySwatches: (swatches: HarmonySwatchInput[]) => void;
+  /** Add all handles of a scheme; a swatch with the same role replaces the old one, duplicates by hex are skipped. */
+  addSwatches: (swatches: SchemeSwatchInput[]) => void;
   addTintSwatch: (tint: TintShadeStep) => void;
   removeSwatch: (id: string) => void;
   clearPalette: () => void;
@@ -71,6 +82,19 @@ export function usePalette(): UsePaletteReturn {
       const merged = [...newSwatches, ...prev];
       const uniq: PaletteSwatch[] = [];
       for (const s of merged) {
+        if (!uniq.some((u) => u.hex.toLowerCase() === s.hex.toLowerCase())) uniq.push(s);
+      }
+      return uniq.slice(0, MAX_SWATCHES);
+    });
+  }, []);
+
+  const addSwatches = useCallback((inputs: SchemeSwatchInput[]) => {
+    const fresh: PaletteSwatch[] = inputs.map((i) => ({ id: makeId(), hex: i.hex, rgb: i.rgb, hsl: i.hsl, name: i.name, role: i.role }));
+    setPalette((prev) => {
+      const roles = new Set(fresh.map((f) => f.role).filter(Boolean));
+      const kept = prev.filter((p) => !(p.role && roles.has(p.role)));
+      const uniq: PaletteSwatch[] = [];
+      for (const s of [...fresh, ...kept]) {
         if (!uniq.some((u) => u.hex.toLowerCase() === s.hex.toLowerCase())) uniq.push(s);
       }
       return uniq.slice(0, MAX_SWATCHES);
@@ -126,7 +150,7 @@ export function usePalette(): UsePaletteReturn {
     const lines = palette
       .slice()
       .reverse()
-      .map((p, i) => `  --swatch-${String(i + 1).padStart(2, '0')}: ${p.hex}; /* ${p.name} */`);
+      .map((p, i) => `  --${p.role ?? `swatch-${String(i + 1).padStart(2, '0')}`}: ${p.hex}; /* ${p.name} */`);
     return `:root {\n${lines.join('\n')}\n}`;
   }, [palette]);
 
@@ -144,6 +168,7 @@ export function usePalette(): UsePaletteReturn {
     paletteCss,
     addSwatch,
     addHarmonySwatches,
+    addSwatches,
     addTintSwatch,
     removeSwatch,
     clearPalette,

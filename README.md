@@ -7,13 +7,13 @@ An artist-friendly color wheel built with React, TypeScript, and Canvas. Feature
 ## Features
 
 - **Procedural Wheel**: No images - colors are generated mathematically with hue mapped to angle and tint/shade variations across the radius
-- **Color Harmonies**: Visual overlays for complementary, split complementary, analogous, triadic, and tetradic color schemes
-- **Palette Builder**: Capture swatches from the wheel and export as CSS custom properties
+- **Scheme selectors**: Complementary, split complementary, analogous, triadic, tetradic, monochrome, free (up to six) and roles (background, surface, text, primary, accent). Handles are drawn on the wheel: tap to place the base, drag the base to rotate the whole scheme, drag a derived handle to change that selector's parameter (spread, spacing, rectangle offset), and drag freely on Free/Roles.
+- **Palette Builder**: Capture swatches or a whole scheme from the wheel and export as CSS custom properties, named by role (`--background`, `--accent`) when the scheme has roles
 - **Artist-Friendly Descriptors**: Hue family names, warm/cool temperature, value and chroma proxies
 - **Technical Color Data**: Full color space conversions including HSL, HSV, HWB, CMYK, XYZ, Lab, LCH, OKLab, OKLCH
 - **Accessibility**: WCAG contrast ratios against white and black backgrounds
 - **Tints & Shades**: Generate digital blends from any sampled color
-- **Depth tab (chromostereopsis)**: A second wheel of saturated sectors on black. Tap any two sectors and the app predicts which will appear nearer, and by how much, from the eye's chromatic aberration. Includes a full-screen test view with observer calibration and an adjustable eye model. The same model adds a depth readout to the artist wheel's sidebar and ranks the palette's pairs by predicted depth.
+- **Depth tab (chromostereopsis)**: A second wheel of saturated sectors on black with the same selectors, snapped to sectors. The app predicts which colours of the scheme will appear nearer, and by how much, from the eye's chromatic aberration. Includes a full-screen test view with observer calibration and an adjustable eye model. "Send to Depth" carries the artist wheel's scheme over for analysis; the sidebar and palette rank pairs by predicted depth using the same eye model.
 
 ## Chromostereopsis model
 
@@ -79,10 +79,16 @@ src/
 │       ├── SampleDepth.tsx     # Depth rows in the artist wheel sidebar
 │       ├── PaletteDepth.tsx    # Ranked pairs in the palette manager
 │       └── ChromaSettingsProvider.tsx
+│   ├── Selectors/
+│   │   ├── SelectorControls.tsx # Selector picker + parameters (both wheels)
+│   │   └── HandleList.tsx      # Handles as selectable rows
+│   └── SchemeProvider.tsx      # Scheme state for both wheels + sent colours
 ├── hooks/
-│   ├── useColorWheel.ts        # State management hook
+│   ├── useColorWheel.ts        # Canvas, pointer/drag, sampling
+│   ├── useScheme.ts            # Scheme store (localStorage)
 │   └── useChromaSettings.ts    # Shared eye model + calibration (localStorage)
 ├── lib/
+│   ├── selectors/              # Scheme selectors: resolve handles, apply drags
 │   └── chromostereopsis/       # Pure physics + colour model
 ├── utils/
 │   ├── colorMath.ts            # Math utilities

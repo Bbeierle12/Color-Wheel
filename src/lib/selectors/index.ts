@@ -1,0 +1,318 @@
+/**
+ * Colour-scheme selectors: a set of handles on a wheel, a rule tying them to a
+ * base position, and a label or role per handle. Pure functions, no DOM; both
+ * the artist wheel (continuous hue + tint) and the depth wheel (sector-snapped)
+ * render the same selector types.
+ *
+ * Positions are polar: theta in degrees (0 at top, clockwise), f in 0..1 from
+ * the inner edge of the colour ring to the outer edge. The depth wheel ignores f.
+ */
+
+import { degNorm } from '../../utils/colorMath';
+
+export type SelectorType =
+  | 'single'
+  | 'complementary'
+  | 'split'
+  | 'analogous'
+  | 'triadic'
+  | 'tetradic'
+  | 'monochrome'
+  | 'free'
+  | 'roles';
+
+export const SELECTOR_TYPES: { id: SelectorType; label: string; description: string }[] = [
+  { id: 'single', label: 'Single', description: 'One colour' },
+  { id: 'complementary', label: 'Complementary', description: 'Base and its opposite' },
+  { id: 'split', label: 'Split complementary', description: 'Base plus two either side of the complement; drag to set the spread' },
+  { id: 'analogous', label: 'Analogous', description: 'Base plus neighbours; drag to set the spacing' },
+  { id: 'triadic', label: 'Triadic', description: 'Three colours 120° apart' },
+  { id: 'tetradic', label: 'Tetradic', description: 'Two complementary pairs; drag to set the rectangle (90° = square)' },
+  { id: 'monochrome', label: 'Monochrome', description: 'One hue, several tints along the radius' },
+  { id: 'free', label: 'Free', description: 'Up to six independent colours' },
+  { id: 'roles', label: 'Roles', description: 'Background, surface, text, primary, accent' },
+];
+
+/** Selector types that make sense on a wheel with no tint axis. */
+export const DEPTH_WHEEL_SELECTOR_TYPES: SelectorType[] = ['single', 'complementary', 'split', 'analogous', 'triadic', 'tetradic', 'free', 'roles'];
+
+export const ROLE_IDS = ['background', 'surface', 'text', 'primary', 'accent'] as const;
+export type RoleId = (typeof ROLE_IDS)[number];
+export const ROLE_LABELS: Record<RoleId, string> = {
+  background: 'Background',
+  surface: 'Surface',
+  text: 'Text',
+  primary: 'Primary',
+  accent: 'Accent',
+};
+
+export interface Polar {
+  theta: number;
+  f: number;
+}
+
+export interface SelectorParams {
+  /** Split: angle either side of the complement. Analogous: spacing between neighbours. Degrees. */
+  spread: number;
+  /** Analogous: 3 or 5 handles. Monochrome: 3–7 tints. */
+  count: number;
+  /** Tetradic: angle from base to the second colour. 90 = square. Degrees. */
+  offset: number;
+}
+
+export interface SchemeState {
+  type: SelectorType;
+  base: Polar;
+  params: SelectorParams;
+  /** Independent handle positions for 'free' (2–6) and 'roles' (exactly 5, in ROLE_IDS order). */
+  free: Polar[];
+}
+
+export interface Handle {
+  id: string;
+  /** A, B, C… or the role name. */
+  label: string;
+  role?: RoleId;
+  pos: Polar;
+  isBase: boolean;
+}
+
+export const PARAM_LIMITS = {
+  splitSpread: { min: 5, max: 90 },
+  analogousSpread: { min: 5, max: 60 },
+  offset: { min: 20, max: 160 },
+  analogousCount: [3, 5] as const,
+  monochromeCount: { min: 3, max: 7 },
+  freeHandles: { min: 2, max: 6 },
+} as const;
+
+export const DEFAULT_PARAMS: SelectorParams = Object.freeze({ spread: 30, count: 3, offset: 60 });
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const clamp01 = (v: number) => clamp(v, 0, 1);
+/** Signed angular difference a − b in (−180, 180]. */
+export function signedAngle(a: number, b: number): number {
+  const d = degNorm(a - b);
+  return d > 180 ? d - 360 : d;
+}
+const polar = (theta: number, f: number): Polar => ({ theta: degNorm(theta), f: clamp01(f) });
+const LETTERS = 'ABCDEF';
+
+export function defaultScheme(type: SelectorType = 'complementary', base: Polar = { theta: 0, f: 1 }): SchemeState {
+  return setType({ type: 'single', base: polar(base.theta, base.f), params: { ...DEFAULT_PARAMS }, free: [] }, type);
+}
+
+// ---------------------------------------------------------------------------
+// Resolve
+// ---------------------------------------------------------------------------
+
+function templateHandles(s: SchemeState): { id: string; pos: Polar }[] {
+  const { base, params } = s;
+  const t = base.theta;
+  const f = base.f;
+  switch (s.type) {
+    case 'single':
+      return [{ id: 'base', pos: base }];
+    case 'complementary':
+      return [{ id: 'base', pos: base }, { id: 'comp', pos: polar(t + 180, f) }];
+    case 'split': {
+      const sp = clamp(params.spread, PARAM_LIMITS.splitSpread.min, PARAM_LIMITS.splitSpread.max);
+      return [{ id: 'base', pos: base }, { id: 'split1', pos: polar(t + 180 - sp, f) }, { id: 'split2', pos: polar(t + 180 + sp, f) }];
+    }
+    case 'analogous': {
+      const sp = clamp(params.spread, PARAM_LIMITS.analogousSpread.min, PARAM_LIMITS.analogousSpread.max);
+      const n = params.count >= 5 ? 2 : 1;
+      const out = [{ id: 'base', pos: base }];
+      for (let k = 1; k <= n; k++) out.push({ id: `ana-${k}`, pos: polar(t - k * sp, f) }, { id: `ana+${k}`, pos: polar(t + k * sp, f) });
+      return out;
+    }
+    case 'triadic':
+      return [{ id: 'base', pos: base }, { id: 'tri2', pos: polar(t + 120, f) }, { id: 'tri3', pos: polar(t + 240, f) }];
+    case 'tetradic': {
+      const off = clamp(params.offset, PARAM_LIMITS.offset.min, PARAM_LIMITS.offset.max);
+      return [
+        { id: 'base', pos: base },
+        { id: 'tet2', pos: polar(t + off, f) },
+        { id: 'tet3', pos: polar(t + 180, f) },
+        { id: 'tet4', pos: polar(t + 180 + off, f) },
+      ];
+    }
+    case 'monochrome': {
+      const n = clamp(Math.round(params.count), PARAM_LIMITS.monochromeCount.min, PARAM_LIMITS.monochromeCount.max);
+      const fMin = 0.2;
+      const out = [{ id: 'base', pos: polar(t, 1) }];
+      for (let i = 1; i < n; i++) out.push({ id: `mono${i}`, pos: polar(t, 1 - (i * (1 - fMin)) / (n - 1)) });
+      return out;
+    }
+    case 'free':
+      return s.free.map((p, i) => ({ id: `h${i + 1}`, pos: p }));
+    case 'roles':
+      return ROLE_IDS.map((id, i) => ({ id, pos: s.free[i] ?? s.base }));
+  }
+}
+
+/** All handles of a scheme, base first for template selectors, labelled A, B, C… or by role. */
+export function resolveHandles(s: SchemeState): Handle[] {
+  return templateHandles(s).map((h, i) => ({
+    id: h.id,
+    label: s.type === 'roles' ? ROLE_LABELS[h.id as RoleId] : LETTERS[i] ?? String(i + 1),
+    role: s.type === 'roles' ? (h.id as RoleId) : undefined,
+    pos: h.pos,
+    isBase: s.type === 'free' || s.type === 'roles' ? false : h.id === 'base',
+  }));
+}
+
+/** The handle other handles are compared against: the Background role, else the base / first handle. */
+export function referenceHandleId(s: SchemeState): string {
+  if (s.type === 'roles') return 'background';
+  if (s.type === 'free') return 'h1';
+  return 'base';
+}
+
+// ---------------------------------------------------------------------------
+// Drag
+// ---------------------------------------------------------------------------
+
+/**
+ * Move a handle to a new position. Base → the whole scheme moves. A derived
+ * handle of a template → its parameter changes (or, for parameter-free
+ * templates, the scheme rotates so that handle lands there). Free/roles → only
+ * that handle moves. Unknown ids leave the state unchanged.
+ */
+export function applyDrag(s: SchemeState, handleId: string, pos: Polar): SchemeState {
+  const p = polar(pos.theta, pos.f);
+  const withBase = (theta: number, f = p.f): SchemeState => ({ ...s, base: polar(theta, f) });
+  const withParams = (patch: Partial<SelectorParams>, f = p.f): SchemeState => ({ ...s, base: polar(s.base.theta, f), params: { ...s.params, ...patch } });
+
+  if (s.type === 'free' || s.type === 'roles') {
+    const idx = s.type === 'free' ? Number(handleId.replace(/^h/, '')) - 1 : ROLE_IDS.indexOf(handleId as RoleId);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= s.free.length) return s;
+    const free = s.free.slice();
+    free[idx] = p;
+    return { ...s, free };
+  }
+  if (handleId === 'base') return s.type === 'monochrome' ? withBase(p.theta, s.base.f) : withBase(p.theta);
+
+  const t = s.base.theta;
+  switch (s.type) {
+    case 'complementary':
+      return handleId === 'comp' ? withBase(p.theta - 180) : s;
+    case 'split':
+      if (handleId === 'split1' || handleId === 'split2') {
+        return withParams({ spread: clamp(Math.abs(signedAngle(p.theta, t + 180)), PARAM_LIMITS.splitSpread.min, PARAM_LIMITS.splitSpread.max) });
+      }
+      return s;
+    case 'analogous': {
+      const m = /^ana([+-])(\d)$/.exec(handleId);
+      if (!m) return s;
+      const k = Number(m[2]);
+      return withParams({ spread: clamp(Math.abs(signedAngle(p.theta, t)) / k, PARAM_LIMITS.analogousSpread.min, PARAM_LIMITS.analogousSpread.max) });
+    }
+    case 'triadic':
+      if (handleId === 'tri2') return withBase(p.theta - 120);
+      if (handleId === 'tri3') return withBase(p.theta - 240);
+      return s;
+    case 'tetradic':
+      if (handleId === 'tet2') return withParams({ offset: clamp(degNorm(p.theta - t), PARAM_LIMITS.offset.min, PARAM_LIMITS.offset.max) });
+      if (handleId === 'tet3') return withBase(p.theta - 180);
+      if (handleId === 'tet4') return withParams({ offset: clamp(degNorm(p.theta - t - 180), PARAM_LIMITS.offset.min, PARAM_LIMITS.offset.max) });
+      return s;
+    case 'monochrome':
+      return /^mono\d$/.test(handleId) ? withBase(p.theta, s.base.f) : s;
+    default:
+      return s;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Type switches, params, free handles
+// ---------------------------------------------------------------------------
+
+/** Switch selector type, carrying the base and seeding free/role positions from the current handles. */
+export function setType(s: SchemeState, type: SelectorType): SchemeState {
+  if (type === s.type) return s;
+  const current = resolveHandles(s).map((h) => h.pos);
+  const params = { ...s.params };
+  if (type === 'monochrome' && params.count < PARAM_LIMITS.monochromeCount.min) params.count = 5;
+  if (type === 'analogous' && !(PARAM_LIMITS.analogousCount as readonly number[]).includes(params.count)) params.count = params.count >= 5 ? 5 : 3;
+
+  let free: Polar[] = [];
+  if (type === 'free') {
+    free = current.slice(0, PARAM_LIMITS.freeHandles.max);
+    if (free.length < PARAM_LIMITS.freeHandles.min) free = [s.base, polar(s.base.theta + 180, s.base.f)];
+  } else if (type === 'roles') {
+    const t = s.base.theta;
+    const f = s.base.f;
+    free = [polar(t, 0.06), polar(t, 0.18), polar(t + 180, 1), polar(t, f), polar(t + 150, f)];
+    if (s.type === 'free' && s.free.length >= ROLE_IDS.length) free = s.free.slice(0, ROLE_IDS.length);
+  }
+  return { ...s, type, params, free };
+}
+
+export function setParams(s: SchemeState, patch: Partial<SelectorParams>): SchemeState {
+  const params = { ...s.params, ...patch };
+  params.spread = s.type === 'analogous'
+    ? clamp(params.spread, PARAM_LIMITS.analogousSpread.min, PARAM_LIMITS.analogousSpread.max)
+    : clamp(params.spread, PARAM_LIMITS.splitSpread.min, PARAM_LIMITS.splitSpread.max);
+  params.offset = clamp(params.offset, PARAM_LIMITS.offset.min, PARAM_LIMITS.offset.max);
+  params.count = s.type === 'monochrome'
+    ? clamp(Math.round(params.count), PARAM_LIMITS.monochromeCount.min, PARAM_LIMITS.monochromeCount.max)
+    : params.count >= 5 ? 5 : 3;
+  return { ...s, params };
+}
+
+export function addFreeHandle(s: SchemeState): SchemeState {
+  if (s.type !== 'free' || s.free.length >= PARAM_LIMITS.freeHandles.max) return s;
+  const last = s.free[s.free.length - 1] ?? s.base;
+  return { ...s, free: [...s.free, polar(last.theta + 60, last.f)] };
+}
+
+export function removeFreeHandle(s: SchemeState, handleId: string): SchemeState {
+  if (s.type !== 'free' || s.free.length <= PARAM_LIMITS.freeHandles.min) return s;
+  const idx = Number(handleId.replace(/^h/, '')) - 1;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= s.free.length) return s;
+  return { ...s, free: s.free.filter((_, i) => i !== idx) };
+}
+
+// ---------------------------------------------------------------------------
+// Sectors (depth wheel)
+// ---------------------------------------------------------------------------
+
+export function sectorOf(theta: number, sectors: number): number {
+  return Math.floor((degNorm(theta) / 360) * sectors) % sectors;
+}
+
+/** Centre angle of the sector containing theta. */
+export function snapTheta(theta: number, sectors: number): number {
+  return (sectorOf(theta, sectors) + 0.5) * (360 / sectors);
+}
+
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
+
+const isType = (v: unknown): v is SelectorType => SELECTOR_TYPES.some((t) => t.id === v);
+const isPolar = (v: unknown): v is Polar =>
+  !!v && typeof v === 'object' && Number.isFinite((v as Polar).theta) && Number.isFinite((v as Polar).f);
+const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+/** Accepts any JSON value; returns a valid scheme or the fallback. */
+export function sanitizeScheme(raw: unknown, fallback: SchemeState): SchemeState {
+  if (!raw || typeof raw !== 'object') return fallback;
+  const r = raw as Record<string, unknown>;
+  if (!isType(r.type) || !isPolar(r.base)) return fallback;
+  const p = (r.params ?? {}) as Record<string, unknown>;
+  let s: SchemeState = {
+    type: r.type,
+    base: polar(r.base.theta, r.base.f),
+    params: { spread: num(p.spread, DEFAULT_PARAMS.spread), count: num(p.count, DEFAULT_PARAMS.count), offset: num(p.offset, DEFAULT_PARAMS.offset) },
+    free: Array.isArray(r.free) ? r.free.filter(isPolar).map((q) => polar(q.theta, q.f)) : [],
+  };
+  s = setParams(s, {});
+  if (s.type === 'roles' && s.free.length !== ROLE_IDS.length) return setType({ ...s, type: 'single', free: [] }, 'roles');
+  if (s.type === 'free' && (s.free.length < PARAM_LIMITS.freeHandles.min || s.free.length > PARAM_LIMITS.freeHandles.max)) {
+    return setType({ ...s, type: 'single', free: [] }, 'free');
+  }
+  if (s.type !== 'free' && s.type !== 'roles') s.free = [];
+  return s;
+}

@@ -2,62 +2,43 @@
  * Palette management component
  */
 
-import type { PaletteSwatch, TintShadeStep, Sample, HarmonyType } from '../../types';
+import type { PaletteSwatch, TintShadeStep } from '../../types';
 import { PaletteDepth } from '../DepthWheel/PaletteDepth';
 
 interface PaletteManagerProps {
-  sample: Sample | null;
   palette: PaletteSwatch[];
   tints: TintShadeStep[];
   tintSteps: number;
   onTintStepsChange: (steps: number) => void;
   onAddSample: () => void;
-  onAddHarmony: () => void;
   onAddTint: (tint: TintShadeStep) => void;
   onRemoveSwatch: (id: string) => void;
   onClearPalette: () => void;
   onCopyCss: () => void;
   paletteCss: string;
-  harmonyType: HarmonyType;
-  canAddHarmony: boolean;
+  addSampleLabel?: string;
 }
 
 export function PaletteManager({
-  sample,
   palette,
   tints,
   tintSteps,
   onTintStepsChange,
   onAddSample,
-  onAddHarmony,
   onAddTint,
   onRemoveSwatch,
   onClearPalette,
   onCopyCss,
   paletteCss,
-  canAddHarmony,
+  addSampleLabel = 'Add sample',
 }: PaletteManagerProps) {
   return (
     <>
       {/* Add buttons */}
       <div className="text-zinc-500">Add</div>
       <div className="text-right flex justify-end gap-2">
-        <button
-          className="px-3 py-2 text-xs rounded-xl border border-zinc-200 bg-zinc-50 disabled:opacity-50"
-          onClick={onAddSample}
-          type="button"
-          disabled={!sample}
-        >
-          Add sample
-        </button>
-        <button
-          className="px-3 py-2 text-xs rounded-xl border border-zinc-200 bg-zinc-50 disabled:opacity-50"
-          onClick={onAddHarmony}
-          type="button"
-          disabled={!canAddHarmony}
-          title={!canAddHarmony ? 'Move inside the wheel to add harmony colors' : ''}
-        >
-          Add harmony
+        <button className="px-3 py-2 text-xs rounded-xl border border-zinc-200 bg-zinc-50" onClick={onAddSample} type="button">
+          {addSampleLabel}
         </button>
       </div>
 
@@ -128,7 +109,7 @@ export function PaletteManager({
             key={swatch.id}
             type="button"
             className="w-[46px] h-[28px] rounded-lg border border-zinc-200 relative group"
-            title={`${swatch.name}: ${swatch.hex}`}
+            title={`${swatch.role ? `${swatch.role} · ` : ''}${swatch.name}: ${swatch.hex}`}
             style={{ background: swatch.hex }}
             onClick={() => onRemoveSwatch(swatch.id)}
           >

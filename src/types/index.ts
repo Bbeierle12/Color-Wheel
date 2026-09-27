@@ -114,6 +114,8 @@ export interface PaletteSwatch {
   rgb: RGB;
   hsl: HSL;
   name: string;
+  /** Scheme role (background, text, …) when the swatch came from a Roles selector; names the CSS variable. */
+  role?: string;
 }
 
 /** Computed complement color information */

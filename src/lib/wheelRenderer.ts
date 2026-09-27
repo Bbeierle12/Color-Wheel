@@ -86,6 +86,34 @@ export function wheelColorAt(x: number, y: number): WheelColor | null {
   return { theta, radius, f, ...rgb };
 }
 
+/** Offscreen XY for a polar position (theta degrees from top, clockwise; f 0..1 across the colour ring). */
+export function polarToOff(theta: number, f: number): Point {
+  const rad = (theta * Math.PI) / 180;
+  const r = MODEL.R_inner + clamp01(f) * (MODEL.R_color - MODEL.R_inner);
+  return { x: MODEL.cx + Math.sin(rad) * r, y: MODEL.cy - Math.cos(rad) * r };
+}
+
+/** Polar position for an offscreen XY; f is clamped so points outside the ring still map. */
+export function offToPolar(x: number, y: number): { theta: number; f: number; inside: boolean } {
+  const r = radiusFromXY(x, y);
+  return {
+    theta: thetaDegFromXY(x, y),
+    f: clamp01((r - MODEL.R_inner) / (MODEL.R_color - MODEL.R_inner)),
+    inside: r <= MODEL.R_color && r >= MODEL.R_inner,
+  };
+}
+
+/** Procedural colour at a polar position (same profile as the bitmap, no pixel read). */
+export function wheelColorAtPolar(theta: number, f: number): RGB {
+  const p = polarToOff(theta, f);
+  const c = wheelColorAt(p.x, p.y);
+  if (c) return { r: c.r, g: c.g, b: c.b };
+  // f is clamped so this only happens at the exact boundary; nudge inward.
+  const q = polarToOff(theta, Math.min(0.999, Math.max(0.001, f)));
+  const d = wheelColorAt(q.x, q.y);
+  return d ? { r: d.r, g: d.g, b: d.b } : { r: 255, g: 255, b: 255 };
+}
+
 // -------------------- Bitmap Rendering --------------------
 
 /**
@@ -252,75 +280,86 @@ export function drawDecor(
   ctx.restore();
 }
 
-// -------------------- Guide Rendering --------------------
+// -------------------- Handle Rendering --------------------
+
+export interface HandleMark {
+  id: string;
+  label: string;
+  /** Canvas-space position. */
+  x: number;
+  y: number;
+  hex: string;
+  isBase: boolean;
+  active: boolean;
+}
+
+/** Hit radius for handles in CSS px (scaled by dpr by callers). */
+export const HANDLE_HIT_PX = 22;
 
 /**
- * Draw pointer guides and harmony overlays
+ * Draw scheme handles: a spoke from the centre for each, a filled dot in the
+ * handle's colour with a label, and a heavier ring on the active one.
  */
-export function drawGuides(
+export function drawHandles(
   ctx: CanvasRenderingContext2D,
   transform: WheelTransform,
   centerCanvas: Point,
-  activePt: Point,
-  sampleRadius: number,
-  harmonyAngles: Array<{ label: string; a: number }>,
-  offToCanvas: (pt: Point) => Point
+  handles: HandleMark[],
+  hoverPt: Point | null
 ): void {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-
   const { dpr } = transform;
 
-  // Main pointer line
-  ctx.lineWidth = 2 * dpr;
-  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-  ctx.beginPath();
-  ctx.moveTo(centerCanvas.x, centerCanvas.y);
-  ctx.lineTo(activePt.x, activePt.y);
-  ctx.stroke();
-
-  // Pointer dot
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-  ctx.lineWidth = 2 * dpr;
-  ctx.beginPath();
-  ctx.arc(activePt.x, activePt.y, 7 * dpr, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  // Harmony markers
-  for (const item of harmonyAngles) {
-    const rad = (item.a * Math.PI) / 180;
-    const dx = Math.sin(rad);
-    const dy = -Math.cos(rad);
-    const ptOff = { x: MODEL.cx + dx * sampleRadius, y: MODEL.cy + dy * sampleRadius };
-    const ptC = offToCanvas(ptOff);
-
-    // Dashed line to center
-    ctx.setLineDash([6 * dpr, 6 * dpr]);
-    ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+  for (const h of handles) {
+    ctx.setLineDash(h.isBase ? [] : [6 * dpr, 6 * dpr]);
+    ctx.strokeStyle = h.active ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.22)';
+    ctx.lineWidth = (h.active ? 2 : 1.5) * dpr;
     ctx.beginPath();
     ctx.moveTo(centerCanvas.x, centerCanvas.y);
-    ctx.lineTo(ptC.x, ptC.y);
+    ctx.lineTo(h.x, h.y);
     ctx.stroke();
-    ctx.setLineDash([]);
+  }
+  ctx.setLineDash([]);
 
-    // Marker dot
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
-    ctx.lineWidth = 2 * dpr;
+  for (const h of handles) {
+    const r = (h.active ? 13 : 11) * dpr;
     ctx.beginPath();
-    ctx.arc(ptC.x, ptC.y, 6.5 * dpr, 0, Math.PI * 2);
+    ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = h.hex;
+    ctx.fill();
+    ctx.lineWidth = (h.active ? 3 : 2) * dpr;
+    ctx.strokeStyle = h.active ? '#111' : 'rgba(255,255,255,0.95)';
+    ctx.stroke();
+    if (h.active) {
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, r + 3 * dpr, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Label on a small dark pill above the dot so it reads on any hue
+    ctx.font = `600 ${Math.max(11, 11 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const w = ctx.measureText(h.label).width + 8 * dpr;
+    const ly = h.y - r - 9 * dpr;
+    ctx.fillStyle = 'rgba(17,17,17,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(h.x - w / 2, ly - 7 * dpr, w, 14 * dpr, 4 * dpr);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(h.label, h.x, ly + 0.5);
+  }
+
+  if (hoverPt) {
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath();
+    ctx.arc(hoverPt.x, hoverPt.y, 5 * dpr, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-
-    // Label
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.font = `${Math.max(10, 10 * dpr)}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(item.label, ptC.x, ptC.y - 10 * dpr);
   }
 
   ctx.restore();
