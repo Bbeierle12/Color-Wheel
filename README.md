@@ -67,6 +67,7 @@ npm run preview  # Preview production build
 npm run test     # Run tests in watch mode
 npm run test:run # Run tests once
 npm run lint     # Run ESLint
+npm run logs     # Read error reports from the deployed site (needs LOG_READ_TOKEN)
 ```
 
 ## Project Structure
@@ -100,6 +101,9 @@ src/
 │   │   ├── RolePreview.tsx     # Mock UI from a scheme's roles
 │   │   ├── SaveSchemeForm.tsx  # Save the scheme on either wheel
 │   │   └── RecentSchemes.tsx   # Compact strip on the artist page
+│   ├── Diagnostics/
+│   │   └── DiagnosticsPanel.tsx # Device info, local + remote error reports
+│   ├── ErrorBoundary.tsx       # Crash panel with a copyable report
 │   ├── SchemeProvider.tsx      # Scheme state for both wheels + sent colours
 │   ├── SchemeLibraryProvider.tsx
 │   └── PaletteProvider.tsx
@@ -118,6 +122,7 @@ src/
 │   ├── selectors/              # Scheme selectors: resolve handles, apply drags, lightness
 │   ├── library/                # Saved-scheme format, sanitising, export/import, starters
 │   ├── migrate/                # HSL-era positions → OKLCH coordinates
+│   ├── diagnostics/            # Error capture: reports, local ring, POST to /api/log
 │   └── chromostereopsis/       # Pure physics + colour model
 ├── utils/
 │   ├── colorMath.ts            # Math utilities
@@ -131,6 +136,12 @@ src/
 ├── types/
 │   └── index.ts                # TypeScript definitions
 └── App.tsx                     # App entry point
+api/
+└── log.ts                      # Vercel Function: error reports → Vercel Blob
+server/
+└── log/core.ts                 # The endpoint's logic (platform-independent, tested)
+scripts/
+└── logs.mjs                    # `npm run logs`: fetch reports, map stacks to source
 ```
 
 ## Usage
@@ -203,6 +214,25 @@ Tests cover:
 - Edge cases (black, white, grays, primaries)
 - Harmony angle calculations
 - Math utilities (clamping, normalization, interpolation)
+
+## Error logging
+
+Every device reports its own errors, so a crash on the phone can be read on the laptop.
+
+**On the device.** Uncaught errors, unhandled promise rejections and render errors (the crash panel) become reports: error, stack, browser, screen, the gamut setting and what it resolved to, the P3 support flags, the build commit, and a short trail of recent actions (page changes, gamut and selector changes). The last 30 stay on the device; the stethoscope button on the nav rail opens **Diagnostics**, which lists them with copy/share, has a **Send test report** button to check the pipeline, and a switch to stop sending.
+
+**On the server.** Reports are POSTed to `/api/log` (a Vercel Function, `api/log.ts`) and kept in a private Vercel Blob store, newest 500. Reports are anonymous — no IP, no cookies, no colours. Reading them needs the `LOG_READ_TOKEN` environment variable:
+
+```bash
+LOG_READ_TOKEN=… npm run logs                 # newest 20, stacks mapped to source lines
+LOG_READ_TOKEN=… npm run logs -- --limit 50
+npm run logs -- --file report.json            # a report pasted from the panel
+LOG_READ_TOKEN=… npm run logs -- --delete     # wipe the log
+```
+
+The same token works in the Diagnostics panel under **Remote log**. The build emits hidden source maps (`dist/assets/*.js.map`), which `npm run logs` fetches from the site to turn minified frames into `src/…:line:col`; for an older build, run `npm run build` at that commit and the script falls back to the local maps.
+
+Environment variables on Vercel: `BLOB_READ_WRITE_TOKEN` (set automatically when the Blob store is linked) and `LOG_READ_TOKEN` (any long random string). Without a Blob token the endpoint accepts and drops reports rather than failing the client.
 
 ## Tech Stack
 

@@ -14,6 +14,7 @@ import {
   type SchemeState,
   type SelectorType,
 } from '../../lib/selectors';
+import { addBreadcrumb } from '../../lib/diagnostics';
 
 interface SelectorControlsProps {
   scheme: SchemeState;
@@ -57,7 +58,10 @@ export function SelectorControls({ scheme, onChange, depthWheel = false, dark = 
         <label htmlFor="selectorType" className={`${label} block mb-1`}>
           Selector
         </label>
-        <select id="selectorType" className={sel} value={scheme.type} onChange={(e) => onChange(setType(scheme, e.target.value as SelectorType))}>
+        <select id="selectorType" className={sel} value={scheme.type} onChange={(e) => {
+            addBreadcrumb(`selector: ${e.target.value}`);
+            onChange(setType(scheme, e.target.value as SelectorType));
+          }}>
           {types.map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}

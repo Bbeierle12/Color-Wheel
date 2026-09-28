@@ -6,6 +6,7 @@
 import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { GAMUT_LABELS, type Gamut } from '../../lib/oklch';
 import { canvasSupportsP3, screenIsP3, type GamutSetting } from '../../lib/oklch/display';
+import { addBreadcrumb } from '../../lib/diagnostics';
 
 interface GamutControlProps {
   active: Gamut;
@@ -24,7 +25,10 @@ export function GamutControl({ active, dark = false }: GamutControlProps) {
       <select
         className={`px-2 py-1.5 text-xs rounded-lg border ${sel}`}
         value={settings.gamut}
-        onChange={(e) => update({ gamut: e.target.value as GamutSetting })}
+        onChange={(e) => {
+          addBreadcrumb(`gamut: ${e.target.value}`);
+          update({ gamut: e.target.value as GamutSetting });
+        }}
         aria-label="Colour gamut"
       >
         <option value="auto">Auto</option>

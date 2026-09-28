@@ -6,6 +6,7 @@
 import { useEffect } from 'react';
 import { useScheme } from '../../hooks/useScheme';
 import { decodeShare } from '../../lib/share';
+import { addBreadcrumb } from '../../lib/diagnostics';
 import type { AppPage } from '../NavRail';
 
 export function ShareRestore({ onNavigate }: { onNavigate: (page: AppPage) => void }) {
@@ -14,6 +15,7 @@ export function ShareRestore({ onNavigate }: { onNavigate: (page: AppPage) => vo
     if (typeof window === 'undefined') return;
     const payload = decodeShare(window.location.hash);
     if (!payload) return;
+    addBreadcrumb(`share link restored (${payload.wheel})`);
     if (payload.wheel === 'depth') {
       setDepth(payload.scheme, 'push');
       setActiveDepth(null);
