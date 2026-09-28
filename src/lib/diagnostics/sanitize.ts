@@ -5,7 +5,7 @@
  * server keeps.
  */
 
-import { REPORT_LIMITS, REPORT_VERSION, type Breadcrumb, type ErrorReport, type ReportEnv, type ReportKind } from './types';
+import { REPORT_LIMITS, REPORT_VERSION, type Breadcrumb, type ErrorReport, type ReportEnv, type ReportKind } from './types.js';
 
 const KINDS: ReportKind[] = ['error', 'unhandledrejection', 'render', 'test'];
 

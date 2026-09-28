@@ -12,8 +12,8 @@
  */
 
 import { timingSafeEqual } from 'node:crypto';
-import { sanitizeReport } from '../../src/lib/diagnostics/sanitize';
-import { REPORT_LIMITS, type ErrorReport, type StoredReport } from '../../src/lib/diagnostics/types';
+import { sanitizeReport } from '../../src/lib/diagnostics/sanitize.js';
+import { REPORT_LIMITS, type ErrorReport, type StoredReport } from '../../src/lib/diagnostics/types.js';
 
 export interface StoredBlob {
   pathname: string;

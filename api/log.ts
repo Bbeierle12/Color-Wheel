@@ -9,7 +9,7 @@
  */
 
 import { del, get, list, put } from '@vercel/blob';
-import { handleLog, memoryStore, type LogStore } from '../server/log/core';
+import { handleLog, memoryStore, type LogStore } from '../server/log/core.js';
 
 function blobStore(): LogStore {
   return {
