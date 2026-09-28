@@ -13,7 +13,9 @@ import { HandleList } from '../Selectors/HandleList';
 import { PairDepthList } from '../DepthWheel/PairDepthList';
 import { SaveSchemeForm } from '../Library/SaveSchemeForm';
 import { GamutControl } from './GamutControl';
-import type { Gamut } from '../../lib/oklch';
+import { ColorInput } from './ColorInput';
+import { ContrastTable } from './ContrastTable';
+import type { Gamut, WheelCoord } from '../../lib/oklch';
 
 interface SidebarProps {
   sample: Sample | null;
@@ -28,13 +30,19 @@ interface SidebarProps {
   stateLabel: string;
   showDecor: boolean;
   showHandles: boolean;
-  tintSteps: number;
   palette: PaletteSwatch[];
   tints: TintShadeStep[];
   paletteCss: string;
   onToggleDecor: () => void;
   onToggleHandles: () => void;
-  onTintStepsChange: (steps: number) => void;
+  onSetColor: (c: WheelCoord) => void;
+  onShuffle: () => void;
+  onReset: () => void;
+  onToggleLock: (id: string) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   onAddSample: () => void;
   onAddScheme: () => void;
   onAddTint: (tint: TintShadeStep) => void;
@@ -59,13 +67,19 @@ export function Sidebar({
   stateLabel,
   showDecor,
   showHandles,
-  tintSteps,
   palette,
   tints,
   paletteCss,
   onToggleDecor,
   onToggleHandles,
-  onTintStepsChange,
+  onSetColor,
+  onShuffle,
+  onReset,
+  onToggleLock,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onAddSample,
   onAddScheme,
   onAddTint,
@@ -78,6 +92,8 @@ export function Sidebar({
   const active = handles.find((h) => h.id === activeId) ?? handles[0];
   const background = scheme.type === 'roles' ? handles.find((h) => h.role === 'background') : undefined;
   const depthColors = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label, coord: h.pos, css: h.css }));
+  const roleCoords = scheme.type === 'roles' ? Object.fromEntries(handles.filter((h) => h.role).map((h) => [h.role as string, h.pos])) : null;
+  const tool = 'px-3 py-2 text-xs rounded-xl border border-zinc-200 bg-zinc-50 disabled:opacity-40 min-h-[36px]';
 
   return (
     <aside className="bg-white border border-zinc-200 rounded-2xl p-3 h-fit sticky top-4">
@@ -99,8 +115,31 @@ export function Sidebar({
         <SelectorControls scheme={scheme} onChange={onSchemeChange} activeHandle={activeId} />
       </div>
       <div className="mt-3">
-        <HandleList handles={handles} activeId={activeId} onSelect={onSelectHandle} />
+        <HandleList handles={handles} activeId={activeId} onSelect={onSelectHandle} lockable={scheme.type === 'free' || scheme.type === 'roles'} onToggleLock={onToggleLock} />
       </div>
+      <div className="mt-2">
+        <ColorInput current={active.css} onSubmit={onSetColor} />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button className={tool} onClick={onUndo} type="button" disabled={!canUndo} aria-label="Undo" title="Undo (Ctrl+Z)">
+          ↶ Undo
+        </button>
+        <button className={tool} onClick={onRedo} type="button" disabled={!canRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+          ↷ Redo
+        </button>
+        <button className={tool} onClick={onShuffle} type="button" title="New hues; locked handles stay">
+          Shuffle
+        </button>
+        <button className={tool} onClick={onReset} type="button" title="Back to the default scheme">
+          Reset
+        </button>
+      </div>
+      {roleCoords && (
+        <div className="mt-3">
+          <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-1.5">Contrast</div>
+          <ContrastTable roles={roleCoords} gamut={gamut} />
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         <button className="px-3 py-2 text-xs rounded-xl border border-zinc-200 bg-zinc-50" onClick={onAddScheme} type="button">
           Add scheme to palette
@@ -155,8 +194,6 @@ export function Sidebar({
         <PaletteManager
           palette={palette}
           tints={tints}
-          tintSteps={tintSteps}
-          onTintStepsChange={onTintStepsChange}
           onAddSample={onAddSample}
           onAddTint={onAddTint}
           onRemoveSwatch={onRemoveSwatch}

@@ -28,7 +28,6 @@ interface ColorWheelProps {
 export function ColorWheel({ onNavigate }: ColorWheelProps) {
   const [showDecor, setShowDecor] = useState(true);
   const [showHandles, setShowHandles] = useState(true);
-  const [tintSteps, setTintSteps] = useState(7);
 
   const {
     canvasRef,
@@ -43,6 +42,15 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
     lightness,
     gamut,
     setLightness,
+    setActiveColor,
+    nudgeActive,
+    shuffle,
+    reset,
+    toggleLock,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     stateLabel,
     palette,
     tints,
@@ -58,7 +66,18 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
     onPointerDown,
     onPointerUp,
     onPointerLeave,
-  } = useColorWheel({ showDecor, showHandles, tintSteps });
+  } = useColorWheel({ showDecor, showHandles });
+
+  // Arrow keys nudge the active handle when the wheel has focus.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLCanvasElement>) => {
+    const step = e.shiftKey ? 10 : 1;
+    if (e.key === 'ArrowLeft') nudgeActive(-step);
+    else if (e.key === 'ArrowRight') nudgeActive(step);
+    else if (e.key === 'ArrowUp') nudgeActive(0, e.shiftKey ? 0.1 : 0.02);
+    else if (e.key === 'ArrowDown') nudgeActive(0, e.shiftKey ? -0.1 : -0.02);
+    else return;
+    e.preventDefault();
+  };
 
   // Bridge the active handle's RGB to the mixing pad
   const selectedRgb = activeSample.rgb;
@@ -74,10 +93,12 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
               <canvas
                 key={gamut}
                 ref={canvasRef}
-                className="block w-full h-full"
+                className="block w-full h-full outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/40"
                 style={{ touchAction: 'none' }}
                 role="img"
-                aria-label="Artist colour wheel: an OKLCH slice at the active handle's lightness. Tap to place the base colour, drag handles to shape the scheme, hover to read any colour."
+                tabIndex={0}
+                aria-label="Artist colour wheel: an OKLCH slice at the active handle's lightness. Tap to place the base colour, drag handles to shape the scheme, hover to read any colour. Arrow keys nudge the active handle."
+                onKeyDown={onKeyDown}
                 onPointerMove={onPointerMove}
                 onPointerDown={onPointerDown}
                 onPointerUp={onPointerUp}
@@ -119,13 +140,19 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
           stateLabel={stateLabel}
           showDecor={showDecor}
           showHandles={showHandles}
-          tintSteps={tintSteps}
           palette={palette}
           tints={tints}
           paletteCss={paletteCss}
           onToggleDecor={() => setShowDecor((v) => !v)}
           onToggleHandles={() => setShowHandles((v) => !v)}
-          onTintStepsChange={setTintSteps}
+          onSetColor={setActiveColor}
+          onShuffle={shuffle}
+          onReset={reset}
+          onToggleLock={toggleLock}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={canUndo}
+          canRedo={canRedo}
           onAddSample={addToPalette}
           onAddScheme={addSchemeToPalette}
           onAddTint={addTintToPalette}

@@ -80,11 +80,24 @@ export function saveSchemeStore(s: SchemeStore): void {
 
 export type SchemeUpdater = SchemeState | ((prev: SchemeState) => SchemeState);
 
+/**
+ * How a change enters the undo history: 'push' starts a new undo step,
+ * 'merge' folds into the current step (pointer moves during a drag), 'none'
+ * bypasses history (loading state that should not be undoable).
+ */
+export type HistoryMode = 'push' | 'merge' | 'none';
+
+export type WheelId = 'artist' | 'depth';
+
 export interface SchemeContextValue {
   artist: SchemeState;
   depth: SchemeState;
-  setArtist: (u: SchemeUpdater) => void;
-  setDepth: (u: SchemeUpdater) => void;
+  setArtist: (u: SchemeUpdater, mode?: HistoryMode) => void;
+  setDepth: (u: SchemeUpdater, mode?: HistoryMode) => void;
+  undo: (wheel: WheelId) => void;
+  redo: (wheel: WheelId) => void;
+  canUndo: (wheel: WheelId) => boolean;
+  canRedo: (wheel: WheelId) => boolean;
   activeArtist: string | null;
   activeDepth: string | null;
   setActiveArtist: (id: string | null) => void;

@@ -13,7 +13,7 @@
  * - Pointer events, hit-testing, dragging
  * - Sampling (hover sample and per-handle samples, both procedural)
  * - Palette management (delegated to usePalette)
- * - Tint/shade computation (delegated to useTintShades)
+ * - Lightness ramp (delegated to useRamp)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,15 +44,15 @@ import {
   clamp01,
 } from '../utils';
 import { oklchHueName, oklchTemperature } from '../utils/artistDescriptors';
-import { applyDrag, resolveHandles, setLightness, type Handle, type Polar, type SchemeState } from '../lib/selectors';
+import { applyDrag, defaultScheme, nudgeHandle, resolveHandles, setHandleColor, setLightness, shuffleScheme, toggleLock, type Handle, type Polar, type SchemeState } from '../lib/selectors';
 import { useScheme, type SentColor } from './useScheme';
 import { usePaletteContext } from './usePaletteContext';
-import { useTintShades } from './useTintShades';
+import { useRamp } from './useRamp';
+import type { WheelCoord } from '../lib/oklch';
 
 interface UseColorWheelOptions {
   showDecor?: boolean;
   showHandles?: boolean;
-  tintSteps?: number;
 }
 
 /** A scheme handle with its resolved colour. */
@@ -89,6 +89,17 @@ interface UseColorWheelReturn {
   gamut: Gamut;
   /** Set the active handle's lightness; `preview` renders a coarse bitmap for slider drags. */
   setLightness: (l: number, preview?: boolean) => void;
+  /** Give the active handle an exact colour (template selectors: the base). */
+  setActiveColor: (c: WheelCoord) => void;
+  /** Nudge the active handle's hue (degrees) and chroma fraction. */
+  nudgeActive: (dTheta: number, dF?: number) => void;
+  shuffle: () => void;
+  reset: () => void;
+  toggleLock: (id: string) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   stateLabel: string;
 
   palette: PaletteSwatch[];
@@ -147,8 +158,8 @@ function buildSample(res: { rgb: RGB; css: string; inSrgb: boolean; p3: [number,
 const FULL_RENDER_DELAY_MS = 90;
 
 export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheelReturn {
-  const { showDecor = true, showHandles = true, tintSteps = 7 } = options;
-  const { artist: scheme, setArtist, activeArtist, setActiveArtist, sendToDepth } = useScheme();
+  const { showDecor = true, showHandles = true } = options;
+  const { artist: scheme, setArtist, activeArtist, setActiveArtist, sendToDepth, undo: undoWheel, redo: redoWheel, canUndo: canUndoWheel, canRedo: canRedoWheel } = useScheme();
   const { derived: chroma } = useChromaSettings();
   const gamut = chroma.gamut;
 
@@ -168,6 +179,8 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   const [pointerPt, setPointerPt] = useState<Point | null>(null);
   const [sample, setSample] = useState<Sample | null>(null);
   const dragRef = useRef<string | null>(null);
+  /** Whether the current pointer gesture has already started an undo step. */
+  const pushedRef = useRef(false);
   const [dragging, setDragging] = useState<string | null>(null);
 
   // ── Scheme handles with colours ──────────────────────────────────
@@ -186,7 +199,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
 
   // ── Extracted hooks ──────────────────────────────────────────────
   const { palette, paletteCss, addSwatch, addSwatches, addTintSwatch, removeSwatch, clearPalette, copyPaletteCss, loadColors } = usePaletteContext();
-  const tints = useTintShades(activeHandle.rgb, activeHandle.hex, tintSteps);
+  const tints = useRamp(activeHandle.pos, gamut);
 
   // ── Coordinate helpers (stable — no deps) ────────────────────────
   const canvasToOff = useCallback((pt: Point): Point => {
@@ -347,13 +360,26 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   }, [showDecor, showHandles, handles, pointerPt, dragging, lightness, gamut, schedDraw]);
 
   // ── Lightness ────────────────────────────────────────────────────
+  const stripDragRef = useRef(false);
   const setActiveLightness = useCallback(
     (l: number, preview = false) => {
       previewRef.current = preview;
-      setArtist((prev) => setLightness(prev, activeId, l));
+      // A slider drag is one undo step: push on its first move, merge the rest.
+      const mode = preview && stripDragRef.current ? 'merge' : 'push';
+      stripDragRef.current = preview;
+      setArtist((prev) => setLightness(prev, activeId, l), mode);
     },
     [activeId, setArtist],
   );
+
+  // ── Scheme tools ─────────────────────────────────────────────────
+  const setActiveColor = useCallback((c: WheelCoord) => setArtist((prev) => setHandleColor(prev, activeId, c)), [activeId, setArtist]);
+  const nudgeActive = useCallback((dTheta: number, dF = 0) => setArtist((prev) => nudgeHandle(prev, activeId, dTheta, dF)), [activeId, setArtist]);
+  const shuffle = useCallback(() => setArtist((prev) => shuffleScheme(prev)), [setArtist]);
+  const reset = useCallback(() => setArtist(defaultScheme('complementary')), [setArtist]);
+  const toggleHandleLock = useCallback((id: string) => setArtist((prev) => toggleLock(prev, id)), [setArtist]);
+  const undo = useCallback(() => undoWheel('artist'), [undoWheel]);
+  const redo = useCallback(() => redoWheel('artist'), [redoWheel]);
 
   // ── Pointer events ───────────────────────────────────────────────
   const hitHandle = useCallback(
@@ -389,7 +415,10 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
         const rr = Math.hypot(o.x - MODEL.cx, o.y - MODEL.cy);
         if (rr > MODEL.R_color * 1.06) return; // outside the disc: nothing
         target = scheme.type === 'free' || scheme.type === 'roles' ? activeId : 'base';
-        setArtist((prev) => applyDrag(prev, target as string, { theta: pol.theta, f: pol.f }));
+        setArtist((prev) => applyDrag(prev, target as string, { theta: pol.theta, f: pol.f }), 'push');
+        pushedRef.current = true;
+      } else {
+        pushedRef.current = false;
       }
       setActiveArtist(target);
       dragRef.current = target;
@@ -411,7 +440,10 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
       const id = dragRef.current;
       if (id) {
         const pol = polarAtCanvas(pt);
-        setArtist((prev) => applyDrag(prev, id, { theta: pol.theta, f: pol.f }));
+        // The first move of a handle drag starts the undo step; later moves merge into it.
+        const mode = pushedRef.current ? 'merge' : 'push';
+        pushedRef.current = true;
+        setArtist((prev) => applyDrag(prev, id, { theta: pol.theta, f: pol.f }), mode);
       }
     },
     [eventToCanvas, sampleAtCanvas, polarAtCanvas, setArtist],
@@ -481,6 +513,15 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     lightness,
     gamut,
     setLightness: setActiveLightness,
+    setActiveColor,
+    nudgeActive,
+    shuffle,
+    reset,
+    toggleLock: toggleHandleLock,
+    undo,
+    redo,
+    canUndo: canUndoWheel('artist'),
+    canRedo: canRedoWheel('artist'),
     stateLabel,
     palette,
     tints,

@@ -8,8 +8,6 @@ import { PaletteDepth } from '../DepthWheel/PaletteDepth';
 interface PaletteManagerProps {
   palette: PaletteSwatch[];
   tints: TintShadeStep[];
-  tintSteps: number;
-  onTintStepsChange: (steps: number) => void;
   onAddSample: () => void;
   onAddTint: (tint: TintShadeStep) => void;
   onRemoveSwatch: (id: string) => void;
@@ -22,8 +20,6 @@ interface PaletteManagerProps {
 export function PaletteManager({
   palette,
   tints,
-  tintSteps,
-  onTintStepsChange,
   onAddSample,
   onAddTint,
   onRemoveSwatch,
@@ -42,36 +38,24 @@ export function PaletteManager({
         </button>
       </div>
 
-      {/* Tints & Shades section */}
-      <div className="col-span-2 mt-2 text-[11px] uppercase tracking-wider text-zinc-500">
-        Tints &amp; shades (digital blend)
-      </div>
-
-      <div className="text-zinc-500">Steps</div>
-      <div className="text-right">
-        <input
-          className="w-full"
-          type="range"
-          min={3}
-          max={11}
-          step={2}
-          value={tintSteps}
-          onChange={(e) => onTintStepsChange(parseInt(e.target.value, 10))}
-        />
-      </div>
-
-      <div className="col-span-2 flex flex-wrap gap-2">
+      {/* Lightness ramp of the active handle */}
+      <div className="col-span-2 mt-2 text-[11px] uppercase tracking-wider text-zinc-500">Ramp (OKLCH, 50–950)</div>
+      <div className="col-span-2 flex flex-wrap gap-1.5" aria-label="Lightness ramp">
         {tints.map((t) => (
           <button
             key={t.label}
             type="button"
-            className="w-[46px] h-[28px] rounded-lg border border-zinc-200"
-            title={`${t.label}: ${t.hex}`}
-            style={{ background: t.hex }}
+            className={`w-[40px] h-[30px] rounded-lg border ${t.isBase ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'} relative`}
+            title={`${t.label}: ${t.css ?? t.hex}`}
+            aria-label={`Add ramp step ${t.label}`}
+            style={{ background: t.css ?? t.hex }}
             onClick={() => onAddTint(t)}
-          />
+          >
+            <span className="absolute -bottom-3.5 left-0 right-0 text-[9px] text-zinc-500 text-center leading-none">{t.label}</span>
+          </button>
         ))}
       </div>
+      <div className="col-span-2 h-2" />
 
       {/* Palette section */}
       <div className="col-span-2 mt-2 text-[11px] uppercase tracking-wider text-zinc-500">

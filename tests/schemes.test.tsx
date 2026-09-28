@@ -83,13 +83,13 @@ describe('artist wheel selectors', () => {
     const slider = () => screen.getByRole('slider', { name: /lightness of the active handle/i });
     fireEvent.click(handleRows().find((r) => /Background/.test(r.textContent ?? ''))!);
     expect(Number(slider().getAttribute('aria-valuenow'))).toBeGreaterThan(90);
-    fireEvent.click(handleRows().find((r) => /^Text/.test(r.textContent ?? ''))!);
+    fireEvent.click(handleRows().find((r) => /Text/.test(r.textContent ?? ''))!);
     expect(Number(slider().getAttribute('aria-valuenow'))).toBeLessThan(30);
-    const before = handleRows().find((r) => /^Text/.test(r.textContent ?? ''))!.textContent;
+    const before = handleRows().find((r) => /Text/.test(r.textContent ?? ''))!.textContent;
     fireEvent.keyDown(slider(), { key: 'ArrowUp', shiftKey: true });
     fireEvent.keyDown(slider(), { key: 'ArrowUp', shiftKey: true });
     expect(Number(slider().getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(40);
-    expect(handleRows().find((r) => /^Text/.test(r.textContent ?? ''))!.textContent).not.toBe(before);
+    expect(handleRows().find((r) => /Text/.test(r.textContent ?? ''))!.textContent).not.toBe(before);
     // only the Text role moved; Background kept its lightness
     const stored = JSON.parse(localStorage.getItem(SCHEME_STORAGE_KEY)!);
     expect(stored.version).toBe(2);
@@ -113,6 +113,61 @@ describe('artist wheel selectors', () => {
     expect(screen.getByText(/outside sRGB/)).toBeInTheDocument();
     fireEvent.change(screen.getAllByLabelText(/colour gamut/i)[0], { target: { value: 'srgb' } });
     expect(handleRows()[1].textContent).toBe(before);
+  });
+
+  it('typing a colour sets the active handle; undo and redo walk the history; keyboard works outside inputs', () => {
+    render(<App />);
+    const input = () => screen.getByLabelText(/colour of the active handle/i) as HTMLInputElement;
+    expect(input().value).toBe('#ff0101');
+    fireEvent.focus(input());
+    fireEvent.change(input(), { target: { value: '#8b4513' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(handleRows()[0]).toHaveTextContent('#8b4513');
+    // template selector: the base moved, so the complement followed
+    expect(JSON.parse(localStorage.getItem(SCHEME_STORAGE_KEY)!).artist.base.theta).toBeCloseTo(50.8, 0);
+    fireEvent.focus(input());
+    fireEvent.change(input(), { target: { value: 'not a colour' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    expect(screen.getByText(/not a colour i can read/i)).toBeInTheDocument();
+    expect(handleRows()[0]).toHaveTextContent('#8b4513');
+    fireEvent.click(screen.getByRole('button', { name: /^undo$/i }));
+    expect(handleRows()[0]).toHaveTextContent('#ff0101');
+    fireEvent.click(screen.getByRole('button', { name: /^redo$/i }));
+    expect(handleRows()[0]).toHaveTextContent('#8b4513');
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(handleRows()[0]).toHaveTextContent('#ff0101');
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(handleRows()[0]).toHaveTextContent('#8b4513');
+    expect(screen.getByRole('button', { name: /^redo$/i })).toBeDisabled();
+  });
+
+  it('shuffle re-rolls hues, locked role handles stay, reset restores the default', () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText(/^Selector$/i), { target: { value: 'roles' } });
+    const textRow = () => handleRows().find((r) => /Text/.test(r.textContent ?? ''))!;
+    const textHex = () => /#[0-9a-f]{6}/.exec(textRow().textContent ?? '')![0];
+    const before = textHex();
+    fireEvent.click(screen.getByRole('checkbox', { name: /lock text/i }));
+    expect(screen.getByRole('checkbox', { name: /lock text/i })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /shuffle/i }));
+    expect(textHex()).toBe(before);
+    expect(JSON.parse(localStorage.getItem(SCHEME_STORAGE_KEY)!).artist.locked).toEqual(['text']);
+    fireEvent.click(screen.getByRole('button', { name: /reset/i }));
+    expect(screen.getByLabelText(/^Selector$/i)).toHaveValue('complementary');
+    expect(handleRows()[0]).toHaveTextContent('#ff0101');
+  });
+
+  it('a Roles scheme shows a contrast table with WCAG levels and APCA Lc; the ramp offers 50–950 steps', () => {
+    render(<App />);
+    expect(screen.queryByTestId('contrast-table')).toBeNull();
+    fireEvent.change(screen.getByLabelText(/^Selector$/i), { target: { value: 'roles' } });
+    const table = screen.getByTestId('contrast-table');
+    expect(table).toHaveTextContent('Text on background');
+    expect(table).toHaveTextContent(/AAA|AA|fail/);
+    expect(table).toHaveTextContent(/Lc \d+/);
+    expect(screen.getAllByRole('button', { name: /add ramp step/i })).toHaveLength(11);
+    fireEvent.click(screen.getByRole('button', { name: /add ramp step 900/i }));
+    expect(screen.getByText(/1 swatch/)).toBeInTheDocument();
   });
 
   it('free selector can add handles up to six', () => {

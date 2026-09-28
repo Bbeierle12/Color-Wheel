@@ -208,9 +208,14 @@ export interface Sample {
   comp?: Complement;
 }
 
-/** Tint/shade step */
+/** One step of a lightness ramp */
 export interface TintShadeStep {
   label: string;
   rgb: RGB;
   hex: string;
+  /** `#hex`, or `color(display-p3 …)` when outside sRGB. */
+  css?: string;
+  coord?: { theta: number; f: number; l: number };
+  /** The step nearest the source colour. */
+  isBase?: boolean;
 }

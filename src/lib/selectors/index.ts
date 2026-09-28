@@ -85,6 +85,8 @@ export interface SchemeState {
   params: SelectorParams;
   /** Independent handle positions for 'free' (2–6) and 'roles' (exactly 5, in ROLE_IDS order). */
   free: Polar[];
+  /** Handle ids that drags, shuffles and colour input leave alone (Free/Roles only). */
+  locked?: string[];
 }
 
 export interface Handle {
@@ -94,6 +96,7 @@ export interface Handle {
   role?: RoleId;
   pos: Polar;
   isBase: boolean;
+  locked: boolean;
 }
 
 export const PARAM_LIMITS = {
@@ -176,14 +179,18 @@ function templateHandles(s: SchemeState): { id: string; pos: Polar }[] {
 
 /** All handles of a scheme, base first for template selectors, labelled A, B, C… or by role. */
 export function resolveHandles(s: SchemeState): Handle[] {
+  const independent = s.type === 'free' || s.type === 'roles';
   return templateHandles(s).map((h, i) => ({
     id: h.id,
     label: s.type === 'roles' ? ROLE_LABELS[h.id as RoleId] : LETTERS[i] ?? String(i + 1),
     role: s.type === 'roles' ? (h.id as RoleId) : undefined,
     pos: h.pos,
-    isBase: s.type === 'free' || s.type === 'roles' ? false : h.id === 'base',
+    isBase: independent ? false : h.id === 'base',
+    locked: independent && !!s.locked?.includes(h.id),
   }));
 }
+
+export const isLocked = (s: SchemeState, handleId: string): boolean => (s.type === 'free' || s.type === 'roles') && !!s.locked?.includes(handleId);
 
 /** The handle other handles are compared against: the Background role, else the base / first handle. */
 export function referenceHandleId(s: SchemeState): string {
@@ -204,6 +211,7 @@ export function referenceHandleId(s: SchemeState): string {
  */
 export function applyDrag(s: SchemeState, handleId: string, pos: DragPos): SchemeState {
   if (s.type === 'free' || s.type === 'roles') {
+    if (isLocked(s, handleId)) return s;
     const idx = s.type === 'free' ? Number(handleId.replace(/^h/, '')) - 1 : ROLE_IDS.indexOf(handleId as RoleId);
     if (!Number.isInteger(idx) || idx < 0 || idx >= s.free.length) return s;
     const free = s.free.slice();
@@ -254,6 +262,7 @@ export function applyDrag(s: SchemeState, handleId: string, pos: DragPos): Schem
  */
 export function setLightness(s: SchemeState, handleId: string, l: number): SchemeState {
   if (s.type === 'free' || s.type === 'roles') {
+    if (isLocked(s, handleId)) return s;
     const idx = s.type === 'free' ? Number(handleId.replace(/^h/, '')) - 1 : ROLE_IDS.indexOf(handleId as RoleId);
     if (!Number.isInteger(idx) || idx < 0 || idx >= s.free.length) return s;
     const free = s.free.slice();
@@ -267,6 +276,43 @@ export function setLightness(s: SchemeState, handleId: string, l: number): Schem
 export function handleLightness(s: SchemeState, handleId: string): number {
   const h = resolveHandles(s).find((x) => x.id === handleId);
   return h ? h.pos.l : s.base.l;
+}
+
+/**
+ * Give a handle an exact colour. Free/Roles set that handle (unless locked);
+ * template selectors set the base, so the whole scheme follows the colour.
+ */
+export function setHandleColor(s: SchemeState, handleId: string, c: Polar): SchemeState {
+  if (s.type === 'free' || s.type === 'roles') return applyDrag(s, handleId, { theta: c.theta, f: c.f, l: c.l });
+  return { ...s, base: polar(c.theta, c.f, c.l) };
+}
+
+/** Toggle a handle's lock (Free/Roles only; other types have nothing to lock). */
+export function toggleLock(s: SchemeState, handleId: string): SchemeState {
+  if (s.type !== 'free' && s.type !== 'roles') return s;
+  const cur = s.locked ?? [];
+  const locked = cur.includes(handleId) ? cur.filter((id) => id !== handleId) : [...cur, handleId];
+  return { ...s, locked };
+}
+
+/**
+ * Re-roll hues: template selectors get a new base hue (chroma and lightness
+ * kept); Free/Roles give every unlocked handle a new hue. `rand` returns 0..1.
+ */
+export function shuffleScheme(s: SchemeState, rand: () => number = Math.random): SchemeState {
+  if (s.type === 'free' || s.type === 'roles') {
+    const ids = s.type === 'free' ? s.free.map((_, i) => `h${i + 1}`) : [...ROLE_IDS];
+    const free = s.free.map((p, i) => (isLocked(s, ids[i]) ? p : polar(rand() * 360, p.f, p.l)));
+    return { ...s, free };
+  }
+  return { ...s, base: polar(rand() * 360, s.base.f, s.base.l) };
+}
+
+/** Nudge a handle's hue (degrees) and/or chroma fraction, through the same rules as a drag. */
+export function nudgeHandle(s: SchemeState, handleId: string, dTheta: number, dF = 0): SchemeState {
+  const h = resolveHandles(s).find((x) => x.id === handleId);
+  if (!h) return s;
+  return applyDrag(s, handleId, { theta: h.pos.theta + dTheta, f: h.pos.f + dF });
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +338,9 @@ export function setType(s: SchemeState, type: SelectorType): SchemeState {
     free = [polar(t, 0.06, 0.97), polar(t, 0.1, 0.92), polar(t + 180, 0.25, 0.22), polar(t, f, l), polar(t + 150, f, l)];
     if (s.type === 'free' && s.free.length >= ROLE_IDS.length) free = s.free.slice(0, ROLE_IDS.length);
   }
-  return { ...s, type, params, free };
+  const next: SchemeState = { ...s, type, params, free };
+  delete next.locked; // handle ids change with the type
+  return next;
 }
 
 export function setParams(s: SchemeState, patch: Partial<SelectorParams>): SchemeState {
@@ -356,11 +404,18 @@ export function sanitizeScheme(raw: unknown, fallback: SchemeState): SchemeState
     params: { spread: num(p.spread, DEFAULT_PARAMS.spread), count: num(p.count, DEFAULT_PARAMS.count), offset: num(p.offset, DEFAULT_PARAMS.offset) },
     free: Array.isArray(r.free) ? r.free.filter(isPolar).map(fromRaw) : [],
   };
+  if (Array.isArray(r.locked)) {
+    const ids = r.locked.filter((v): v is string => typeof v === 'string' && v.length <= 12);
+    if (ids.length) s.locked = Array.from(new Set(ids));
+  }
   s = setParams(s, {});
   if (s.type === 'roles' && s.free.length !== ROLE_IDS.length) return setType({ ...s, type: 'single', free: [] }, 'roles');
   if (s.type === 'free' && (s.free.length < PARAM_LIMITS.freeHandles.min || s.free.length > PARAM_LIMITS.freeHandles.max)) {
     return setType({ ...s, type: 'single', free: [] }, 'free');
   }
-  if (s.type !== 'free' && s.type !== 'roles') s.free = [];
+  if (s.type !== 'free' && s.type !== 'roles') {
+    s.free = [];
+    delete s.locked;
+  }
   return s;
 }

@@ -17,7 +17,7 @@ import { useChromaSettings, WHEEL_LIGHTNESS_RANGE } from '../../hooks/useChromaS
 import { useScheme, type SentColor } from '../../hooks/useScheme';
 import { coordToRgb } from '../../lib/oklch';
 import { GamutControl } from '../ColorWheel/GamutControl';
-import { applyDrag, referenceHandleId, snapTheta } from '../../lib/selectors';
+import { applyDrag, defaultScheme, referenceHandleId, shuffleScheme, snapTheta, toggleLock } from '../../lib/selectors';
 import { SelectorControls } from '../Selectors/SelectorControls';
 import { HandleList } from '../Selectors/HandleList';
 import { DepthWheel } from './DepthWheel';
@@ -29,12 +29,12 @@ import { N_SECTORS, resolveDepthHandles } from './depthWheelModel';
 import { SaveSchemeForm } from '../Library/SaveSchemeForm';
 
 const btn = (on = false) =>
-  `px-3 py-2 text-xs rounded-xl border min-h-[40px] ${on ? 'border-violet-500 bg-violet-700 text-white' : 'border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'}`;
+  `px-3 py-2 text-xs rounded-xl border min-h-[40px] disabled:opacity-40 ${on ? 'border-violet-500 bg-violet-700 text-white' : 'border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'}`;
 
 export function DepthPage() {
   const { settings: s, derived, update } = useChromaSettings();
   const gamut = derived.gamut;
-  const { depth: scheme, setDepth, activeDepth, setActiveDepth, sent, clearSent } = useScheme();
+  const { depth: scheme, setDepth, activeDepth, setActiveDepth, sent, clearSent, undo, redo, canUndo, canRedo } = useScheme();
   const [showModel, setShowModel] = useState(false);
   const [test, setTest] = useState<'scheme' | 'sent' | null>(null);
   const dragRef = useRef<string | null>(null);
@@ -48,13 +48,17 @@ export function DepthPage() {
   const schemeColors: DepthColor[] = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label, coord: h.coord, css: h.css }));
   const allSchemeColors: DepthColor[] = handles.map((h) => ({ hex: h.hex, label: h.label, coord: h.coord, css: h.css }));
 
+  const pushedRef = useRef(false);
   const onPointerStart = useCallback(
     (handleId: string | null, theta: number) => {
       const snapped = snapTheta(theta, N_SECTORS);
       let target = handleId;
       if (!target) {
         target = scheme.type === 'free' || scheme.type === 'roles' ? activeId : 'base';
-        setDepth((prev) => applyDrag(prev, target as string, { theta: snapped, f: 1 }));
+        setDepth((prev) => applyDrag(prev, target as string, { theta: snapped, f: 1 }), 'push');
+        pushedRef.current = true;
+      } else {
+        pushedRef.current = false;
       }
       setActiveDepth(target);
       dragRef.current = target;
@@ -66,7 +70,9 @@ export function DepthPage() {
       const id = dragRef.current;
       if (!id) return;
       const snapped = snapTheta(theta, N_SECTORS);
-      setDepth((prev) => applyDrag(prev, id, { theta: snapped, f: 1 }));
+      const mode = pushedRef.current ? 'merge' : 'push';
+      pushedRef.current = true;
+      setDepth((prev) => applyDrag(prev, id, { theta: snapped, f: 1 }), mode);
     },
     [setDepth],
   );
@@ -142,7 +148,21 @@ export function DepthPage() {
               <GamutControl active={gamut} dark />
             </div>
             <div className="mt-3">
-              <HandleList handles={handles} activeId={activeId} onSelect={setActiveDepth} dark />
+              <HandleList handles={handles} activeId={activeId} onSelect={setActiveDepth} dark lockable={scheme.type === 'free' || scheme.type === 'roles'} onToggleLock={(id) => setDepth((prev) => toggleLock(prev, id))} />
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <button type="button" className={btn()} onClick={() => undo('depth')} disabled={!canUndo('depth')} aria-label="Undo" title="Undo (Ctrl+Z)">
+                ↶ Undo
+              </button>
+              <button type="button" className={btn()} onClick={() => redo('depth')} disabled={!canRedo('depth')} aria-label="Redo" title="Redo (Ctrl+Shift+Z)">
+                ↷ Redo
+              </button>
+              <button type="button" className={btn()} onClick={() => setDepth((prev) => shuffleScheme(prev))} title="New hues; locked handles stay">
+                Shuffle
+              </button>
+              <button type="button" className={btn()} onClick={() => setDepth(defaultScheme('complementary', { theta: 25, f: 1, l: 0.6 }))} title="Back to the default scheme">
+                Reset
+              </button>
             </div>
             <div className="mt-3">
               <SaveSchemeForm wheel="depth" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role, coord: h.coord }))} dark />

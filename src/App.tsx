@@ -8,6 +8,7 @@ import { LibraryPage } from './components/Library';
 import { SketchPage } from './components/SketchPage';
 import { NavRail } from './components/NavRail';
 import type { AppPage } from './components/NavRail';
+import { UndoKeys } from './components/UndoKeys';
 
 function App() {
   const [activePage, setActivePage] = useState<AppPage>('wheel');
@@ -24,6 +25,7 @@ function App() {
       <SchemeProvider>
         <SchemeLibraryProvider>
           <PaletteProvider>
+            <UndoKeys page={activePage} />
             <div className="flex h-screen overflow-hidden bg-zinc-50 text-zinc-900">
               <NavRail activePage={activePage} onNavigate={setActivePage} />
               <main ref={mainRef} className="flex-1 overflow-auto">

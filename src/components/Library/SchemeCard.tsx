@@ -10,6 +10,8 @@ import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { SELECTOR_TYPES } from '../../lib/selectors';
 import { useDepthVerdict } from '../../hooks/useDepthVerdict';
 import { RolePreview } from './RolePreview';
+import { ContrastTable } from '../ColorWheel/ContrastTable';
+import { coordFromHex } from '../../lib/oklch';
 
 export interface SchemeCardActions {
   onLoadArtist: (s: SavedScheme) => void;
@@ -40,6 +42,7 @@ export function SchemeCard({ scheme: s, compact = false, onLoadArtist, onLoadDep
   const gamut = derived.gamut;
   const selectorLabel = s.scheme ? SELECTOR_TYPES.find((t) => t.id === s.scheme!.type)?.label : null;
   const hasRoles = s.colors.some((c) => c.role);
+  const roleCoords = hasRoles ? Object.fromEntries(s.colors.filter((c) => c.role).map((c) => [c.role as string, c.coord ?? coordFromHex(c.hex)!])) : null;
 
   const copyCss = async () => {
     try {
@@ -68,6 +71,7 @@ export function SchemeCard({ scheme: s, compact = false, onLoadArtist, onLoadDep
       </div>
 
       {!compact && hasRoles && <RolePreview colors={s.colors} />}
+      {!compact && roleCoords && <ContrastTable roles={roleCoords} gamut={gamut} compact />}
 
       {/* Title + badges */}
       <div className="min-w-0">
