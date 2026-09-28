@@ -110,12 +110,17 @@ export interface HarmonyAngle {
 /** Palette swatch for saved colors */
 export interface PaletteSwatch {
   id: string;
+  /** sRGB fallback (mapped into sRGB when the colour is wider). */
   hex: string;
   rgb: RGB;
   hsl: HSL;
   name: string;
   /** Scheme role (background, text, …) when the swatch came from a Roles selector; names the CSS variable. */
   role?: string;
+  /** Wheel coordinate, when the swatch came from the wheel; the exact colour. */
+  coord?: { theta: number; f: number; l: number };
+  /** `#hex`, or `color(display-p3 …)` when outside sRGB. */
+  css?: string;
 }
 
 /** Computed complement color information */
@@ -159,10 +164,15 @@ export interface Sample {
   lightness: number;
   inside: boolean;
 
-  // Basic color values
+  // Basic color values (rgb/hex are the sRGB fallback; css is the colour itself)
   rgb: RGB;
   hex: string;
   cssRgb: string;
+  /** `#hex`, or `color(display-p3 …)` when the colour is outside sRGB. */
+  css: string;
+  inSrgb: boolean;
+  /** Transfer-encoded Display P3 channels when resolved for P3. */
+  p3: [number, number, number] | null;
 
   // Artist-friendly descriptors
   hueLabel: string;

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   DISPLAYS,
+  toDisplayLinear,
   isDisplayKey,
   vLambda,
   primaryRefraction,
@@ -57,14 +58,47 @@ describe('display primaries', () => {
   }
 
   it('V(λ) weighting pulls primaries toward 555 nm', () => {
-    const p = DISPLAYS.oled;
+    const p = DISPLAYS.oled.srgb;
     expect(primaryRefraction(p.r)).toBeLessThan(lca(p.r[0]));
     expect(primaryRefraction(p.b)).toBeGreaterThan(lca(p.b[0]));
   });
 
   it('OLED red primary matches an independent integration (Wolfram) to 1e-4', () => {
-    expect(primaryRefraction(DISPLAYS.oled.r)).toBeCloseTo(0.11679, 4);
-    expect(primaryRefraction(DISPLAYS.oled.b)).toBeCloseTo(-0.85533, 4);
+    expect(primaryRefraction(DISPLAYS.oled.srgb.r)).toBeCloseTo(0.11679, 4);
+    expect(primaryRefraction(DISPLAYS.oled.srgb.b)).toBeCloseTo(-0.85533, 4);
+  });
+
+  it('P3 primaries sit further out than sRGB ones, so the red–blue focus gap widens', () => {
+    const [rS, , bS] = displayRefractions('oled', 'srgb');
+    const [rP, , bP] = displayRefractions('oled', 'p3');
+    expect(rP).toBeGreaterThan(rS); // deeper red (630 vs 622 nm): larger LCA value
+    expect(bP).toBeLessThanOrEqual(bS + 1e-9); // narrower blue: V(λ) pulls it toward 555 nm less
+    expect(rP - bP).toBeGreaterThan(rS - bS);
+  });
+
+  it('on a P3 display a hex colour is decomposed into P3 drives; a P3-only coordinate uses its own channels', () => {
+    // pure sRGB red on a P3 panel is mostly red drive with a little green and blue
+    const lin = toDisplayLinear('#ff0000', 'p3');
+    expect(lin[0]).toBeCloseTo(0.822, 2);
+    expect(lin[1]).toBeCloseTo(0.033, 2);
+    expect(lin[2]).toBeCloseTo(0.017, 2);
+    // the same coordinate resolved for sRGB vs P3 gives different drives
+    const c = { theta: 145, f: 0.7, l: 0.5 };
+    const p3 = toDisplayLinear(c, 'p3');
+    const srgb = toDisplayLinear(c, 'srgb');
+    expect(p3[1]).toBeGreaterThan(0.1);
+    expect(srgb[1]).toBeGreaterThan(0.1);
+    expect(p3).not.toEqual(srgb);
+    // a P3-only green vs red on black: the P3 prediction uses the wider primaries and stays sane
+    const eye = { effLeftMm: 0.3, effRightMm: 0.3 };
+    const pS = pairDepth({ a: '#ff0000', b: c, eye, distanceMm: 400, gamut: 'srgb' });
+    const pP = pairDepth({ a: '#ff0000', b: c, eye, distanceMm: 400, gamut: 'p3' });
+    expect(pS.ok && pS.stable).toBe(true);
+    expect(pP.ok && pP.stable).toBe(true);
+    if (pS.stable && pP.stable) {
+      expect(Math.sign(pS.disparity)).toBe(Math.sign(pP.disparity));
+      expect(Math.abs(pP.disparity - pS.disparity)).toBeLessThan(0.5);
+    }
   });
 
   it('unknown display throws', () => {

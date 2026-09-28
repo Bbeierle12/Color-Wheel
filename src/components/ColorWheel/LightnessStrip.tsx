@@ -6,12 +6,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { lightnessRamp } from '../../lib/oklch';
+import { lightnessRamp, type Gamut } from '../../lib/oklch';
+import { contextSettings } from '../../lib/oklch/display';
 
 export interface StripMark {
   id: string;
   l: number;
-  hex: string;
+  /** CSS colour (hex or color(display-p3 …)). */
+  fill: string;
   label: string;
   active: boolean;
 }
@@ -21,6 +23,7 @@ interface LightnessStripProps {
   theta: number;
   f: number;
   value: number;
+  gamut?: Gamut;
   marks: StripMark[];
   /** `preview` is true while the pointer is down (coarse wheel redraws). */
   onChange: (l: number, preview: boolean) => void;
@@ -30,7 +33,7 @@ interface LightnessStripProps {
 const STEPS = 128;
 const PAD = 10; // px above and below the ramp
 
-export function LightnessStrip({ theta, f, value, marks, onChange, onSelect }: LightnessStripProps) {
+export function LightnessStrip({ theta, f, value, gamut = 'srgb', marks, onChange, onSelect }: LightnessStripProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -39,7 +42,7 @@ export function LightnessStrip({ theta, f, value, marks, onChange, onSelect }: L
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', contextSettings(gamut));
     if (!ctx) return;
     const w = Math.max(24, wrap.clientWidth);
     const h = Math.max(60, wrap.clientHeight);
@@ -51,14 +54,13 @@ export function LightnessStrip({ theta, f, value, marks, onChange, onSelect }: L
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    const ramp = lightnessRamp(theta, f, STEPS);
+    const ramp = lightnessRamp(theta, f, STEPS, gamut);
     const inner = h - 2 * PAD;
     const x0 = 8;
     const bw = Math.max(8, w - 16 - 6);
     for (let i = 0; i < STEPS; i++) {
-      const c = ramp[i];
       const y = PAD + inner - ((i + 1) / STEPS) * inner;
-      ctx.fillStyle = `rgb(${c.r} ${c.g} ${c.b})`;
+      ctx.fillStyle = ramp[i].css;
       ctx.fillRect(x0, y, bw, inner / STEPS + 1);
     }
     ctx.strokeStyle = 'rgba(0,0,0,0.25)';
@@ -69,7 +71,7 @@ export function LightnessStrip({ theta, f, value, marks, onChange, onSelect }: L
     for (const m of marks) {
       if (m.active) continue;
       const y = PAD + inner - m.l * inner;
-      ctx.fillStyle = m.hex;
+      ctx.fillStyle = m.fill;
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       ctx.beginPath();
       ctx.moveTo(x0 + bw + 1, y);
@@ -91,7 +93,7 @@ export function LightnessStrip({ theta, f, value, marks, onChange, onSelect }: L
     ctx.strokeStyle = '#111';
     ctx.lineWidth = 2;
     ctx.stroke();
-  }, [theta, f, value, marks]);
+  }, [theta, f, value, marks, gamut]);
 
   useEffect(() => {
     draw();

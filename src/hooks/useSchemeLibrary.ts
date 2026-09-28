@@ -26,7 +26,7 @@ const MIGRATED_FLAG = 'color-wheel-scheme-library-migrated';
 /** Resolve a starter's wheel coordinates to hex. */
 export function resolveStarterColors(s: SavedScheme): SavedScheme {
   if (!s.scheme) return s;
-  const colors = resolveHandles(s.scheme).map((h) => ({ hex: coordToRgb(h.pos).hex, label: h.label, role: h.role }));
+  const colors = resolveHandles(s.scheme).map((h) => ({ hex: coordToRgb(h.pos).hex, label: h.label, role: h.role, coord: h.pos }));
   return { ...s, colors, background: colors.find((c) => c.role === 'background')?.hex };
 }
 

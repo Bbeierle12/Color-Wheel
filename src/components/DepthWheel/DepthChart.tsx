@@ -5,7 +5,7 @@
 
 import { useMemo } from 'react';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
-import { N_SECTORS, fmtCm, pairWithSettings, sectorHex, sectorHue, type DepthHandle } from './depthWheelModel';
+import { N_SECTORS, fmtCm, pairWithSettings, sectorCoord, sectorCss, sectorHue, type DepthHandle } from './depthWheelModel';
 
 const W = 360;
 const H = 150;
@@ -20,18 +20,19 @@ interface DepthChartProps {
 
 export function DepthChart({ handles, reference }: DepthChartProps) {
   const { settings: s, derived: d } = useChromaSettings();
-  const refHex = reference.hex;
+  const ref = reference.coord;
+  const gamut = d.gamut;
 
   const { pts, maxAbs, nearest, farthest } = useMemo(() => {
     const pts = Array.from({ length: N_SECTORS }, (_, i) => {
-      const p = pairWithSettings(s, d, sectorHex(i, s.wheelSaturation, s.wheelLightness), refHex);
+      const p = pairWithSettings(s, d, sectorCoord(i, s.wheelSaturation, s.wheelLightness, gamut), ref);
       return { i, d: p.ok && p.stable ? p.depthMm : 0, ok: p.ok && p.stable };
     });
     const maxAbs = Math.max(1, ...pts.map((p) => Math.abs(p.d)));
     const nearest = pts.reduce((m, p) => (p.d > m.d ? p : m));
     const farthest = pts.reduce((m, p) => (p.d < m.d ? p : m));
     return { pts, maxAbs, nearest, farthest };
-  }, [s, d, refHex]);
+  }, [s, d, ref, gamut]);
 
   const bw = W / N_SECTORS;
   const y = (v: number) => MID - (v / maxAbs) * ((BOT - TOP) / 2);
@@ -53,7 +54,7 @@ export function DepthChart({ handles, reference }: DepthChartProps) {
               y={Math.min(yy, MID).toFixed(1)}
               width={(bw - 1.6).toFixed(1)}
               height={Math.max(Math.abs(yy - MID), 0.8).toFixed(1)}
-              fill={sectorHex(p.i, Math.max(s.wheelSaturation, 35), s.wheelLightness)}
+              fill={sectorCss(p.i, Math.max(s.wheelSaturation, 35), s.wheelLightness, gamut)}
               opacity={p.ok ? 1 : 0.25}
             />
           );

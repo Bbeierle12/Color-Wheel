@@ -3,14 +3,19 @@
  * text, a primary button and an accent. Missing roles fall back sensibly.
  */
 
-import type { SavedColor } from '../../lib/library';
+import { savedColorCss, type SavedColor } from '../../lib/library';
+import { useChromaSettings } from '../../hooks/useChromaSettings';
 
 interface RolePreviewProps {
   colors: SavedColor[];
 }
 
 export function RolePreview({ colors }: RolePreviewProps) {
-  const role = (r: string) => colors.find((c) => c.role === r)?.hex;
+  const { derived } = useChromaSettings();
+  const role = (r: string) => {
+    const c = colors.find((x) => x.role === r);
+    return c ? savedColorCss(c, derived.gamut) : undefined;
+  };
   const background = role('background') ?? '#ffffff';
   const surface = role('surface') ?? background;
   const text = role('text') ?? '#111111';

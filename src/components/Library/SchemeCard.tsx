@@ -5,7 +5,8 @@
 
 import { useState } from 'react';
 import type { SavedScheme } from '../../lib/library';
-import { schemeToCss } from '../../lib/library';
+import { savedColorCss, schemeToCss } from '../../lib/library';
+import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { SELECTOR_TYPES } from '../../lib/selectors';
 import { useDepthVerdict } from '../../hooks/useDepthVerdict';
 import { RolePreview } from './RolePreview';
@@ -35,12 +36,14 @@ export function SchemeCard({ scheme: s, compact = false, onLoadArtist, onLoadDep
   const [confirm, setConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
   const verdict = useDepthVerdict(s);
+  const { derived } = useChromaSettings();
+  const gamut = derived.gamut;
   const selectorLabel = s.scheme ? SELECTOR_TYPES.find((t) => t.id === s.scheme!.type)?.label : null;
   const hasRoles = s.colors.some((c) => c.role);
 
   const copyCss = async () => {
     try {
-      await navigator.clipboard.writeText(schemeToCss(s));
+      await navigator.clipboard.writeText(schemeToCss(s, gamut));
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
@@ -60,7 +63,7 @@ export function SchemeCard({ scheme: s, compact = false, onLoadArtist, onLoadDep
       {/* Swatch strip */}
       <div className="flex h-10 rounded-xl overflow-hidden border border-zinc-200">
         {s.colors.map((c, i) => (
-          <div key={i} className="flex-1" style={{ background: c.hex }} title={`${c.label} ${c.hex}`} />
+          <div key={i} className="flex-1" style={{ background: savedColorCss(c, gamut) }} title={`${c.label} ${c.hex}`} />
         ))}
       </div>
 

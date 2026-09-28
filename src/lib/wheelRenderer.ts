@@ -10,7 +10,8 @@
 import type { RGB, WheelTransform, Point } from '../types';
 import { MODEL, OFF_SIZE, CHROMA_RINGS, HUE_LABELS } from '../constants/wheelModel';
 import { clamp01 } from '../utils/colorMath';
-import { C_SCALE, coordToRgb, gamutBoundary, renderSlice, type WheelCoord } from './oklch';
+import { C_SCALE, coordToRgb, gamutBoundary, renderSlice, type Gamut, type WheelCoord } from './oklch';
+import { imageDataSettings } from './oklch/display';
 
 // -------------------- Geometry Functions --------------------
 
@@ -57,18 +58,18 @@ export function offToPolar(x: number, y: number): { theta: number; f: number; in
 // -------------------- Colour at Position --------------------
 
 /**
- * Colour at a wheel position and lightness. `mapped` is true when the point is
- * outside sRGB, in which case the colour returned is the gamut edge along that
- * radius and `fEffective` is where the edge sits.
+ * Colour at a wheel position and lightness (sRGB fallback bytes). `mapped` is
+ * true when the point is outside the gamut, in which case the colour returned
+ * is the gamut edge along that radius and `fEffective` is where the edge sits.
  */
-export function wheelColorAtPolar(theta: number, f: number, l: number): RGB & { mapped: boolean; fEffective: number } {
-  const r = coordToRgb({ theta, f, l });
-  return { ...r.rgb, mapped: r.mapped, fEffective: r.fEffective };
+export function wheelColorAtPolar(theta: number, f: number, l: number, gamut: Gamut = 'srgb'): RGB & { mapped: boolean; fEffective: number; css: string } {
+  const r = coordToRgb({ theta, f, l }, gamut);
+  return { ...r.rgb, mapped: r.mapped, fEffective: r.fEffective, css: r.css };
 }
 
 /** Offscreen XY where a coordinate is drawn: on the gamut edge when it lies outside. */
-export function coordToOff(c: WheelCoord): Point {
-  const r = coordToRgb(c);
+export function coordToOff(c: WheelCoord, gamut: Gamut = 'srgb'): Point {
+  const r = coordToRgb(c, gamut);
   return polarToOff(c.theta, r.fEffective);
 }
 
@@ -79,15 +80,19 @@ export const GHOST_ALPHA = 92;
 
 /**
  * Render the slice at lightness `l` into a square context of `size` pixels
- * (the disc scales with the size; geometry is in OFF_SIZE units).
+ * (the disc scales with the size; geometry is in OFF_SIZE units). For P3 the
+ * context must have been created in display-p3 and the image data is tagged
+ * to match, so the bytes are interpreted as P3.
  */
-export function renderWheelBitmap(offCtx: CanvasRenderingContext2D, l: number, size = OFF_SIZE): void {
-  const img = offCtx.createImageData(size, size);
+export function renderWheelBitmap(offCtx: CanvasRenderingContext2D, l: number, size = OFF_SIZE, gamut: Gamut = 'srgb'): void {
+  const settings = imageDataSettings(gamut);
+  const img = settings ? offCtx.createImageData(size, size, settings) : offCtx.createImageData(size, size);
   renderSlice(img.data, {
     size,
     radius: (MODEL.R_color / OFF_SIZE) * size,
     l,
-    // Outside sRGB: a faded ghost of the edge colour (what a tap there gives); the
+    gamut,
+    // Outside the gamut: a faded ghost of the edge colour (what a tap there gives); the
     // boundary curve drawn by drawDecor marks where real colours end.
     ghostAlpha: GHOST_ALPHA,
     background: [255, 255, 255, 0],
@@ -99,11 +104,27 @@ export function renderWheelBitmap(offCtx: CanvasRenderingContext2D, l: number, s
 
 const FONT = 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial';
 
+/** Trace a gamut boundary at this lightness as a closed path. */
+function boundaryPath(ctx: CanvasRenderingContext2D, centerCanvas: Point, R: number, l: number, gamut: Gamut): void {
+  const edge = gamutBoundary(l, 360, gamut);
+  ctx.beginPath();
+  for (let i = 0; i <= 360; i++) {
+    const c = edge[i % 360];
+    const rad = (i * Math.PI) / 180;
+    const rr = (c / C_SCALE) * R;
+    const x = centerCanvas.x + Math.sin(rad) * rr;
+    const y = centerCanvas.y - Math.cos(rad) * rr;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+}
+
 /**
- * Draw wheel decorations: the gamut edge at this lightness, absolute-chroma
- * rings, hue ticks and labels.
+ * Draw wheel decorations: the gamut edge at this lightness (and, on P3, the
+ * sRGB edge dashed inside it), absolute-chroma rings, hue ticks and labels.
  */
-export function drawDecor(ctx: CanvasRenderingContext2D, transform: WheelTransform, centerCanvas: Point, l: number): void {
+export function drawDecor(ctx: CanvasRenderingContext2D, transform: WheelTransform, centerCanvas: Point, l: number, gamut: Gamut = 'srgb'): void {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   const { scale, dpr } = transform;
@@ -130,21 +151,18 @@ export function drawDecor(ctx: CanvasRenderingContext2D, transform: WheelTransfo
   ctx.arc(centerCanvas.x, centerCanvas.y, R, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Gamut edge at this lightness
-  const edge = gamutBoundary(l, 360);
+  // Gamut edge at this lightness; on P3 also the sRGB edge, dashed, so web-safe picks are visible
+  if (gamut === 'p3') {
+    ctx.lineWidth = 1 * dpr;
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.setLineDash([4 * dpr, 4 * dpr]);
+    boundaryPath(ctx, centerCanvas, R, l, 'srgb');
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   ctx.lineWidth = 1.5 * dpr;
   ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-  ctx.beginPath();
-  for (let i = 0; i <= 360; i++) {
-    const c = edge[i % 360];
-    const rad = (i * Math.PI) / 180;
-    const rr = (c / C_SCALE) * R;
-    const x = centerCanvas.x + Math.sin(rad) * rr;
-    const y = centerCanvas.y - Math.cos(rad) * rr;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
+  boundaryPath(ctx, centerCanvas, R, l, gamut);
   ctx.stroke();
 
   // Hue ticks outside the disc
@@ -207,7 +225,8 @@ export interface HandleMark {
   /** Canvas-space position. */
   x: number;
   y: number;
-  hex: string;
+  /** CSS colour for the dot: hex or color(display-p3 …). */
+  fill: string;
   isBase: boolean;
   active: boolean;
   /** Drawn on another lightness slice than the one shown. */
@@ -247,7 +266,7 @@ export function drawHandles(ctx: CanvasRenderingContext2D, transform: WheelTrans
     ctx.globalAlpha = h.ghost ? 0.55 : 1;
     ctx.beginPath();
     ctx.arc(h.x, h.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = h.hex;
+    ctx.fillStyle = h.fill;
     ctx.fill();
     ctx.lineWidth = (h.active ? 3 : 2) * dpr;
     ctx.strokeStyle = h.active ? '#111' : 'rgba(255,255,255,0.95)';

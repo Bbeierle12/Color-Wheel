@@ -6,8 +6,8 @@
  * when no lightness is set), scaled by the saturation slider.
  */
 
-import { pairDepth, type PairDepth } from '../../lib/chromostereopsis';
-import { C_SCALE, coordToRgb, cusp, maxChroma, toeInv } from '../../lib/oklch';
+import { pairDepth, type ColorInput, type PairDepth } from '../../lib/chromostereopsis';
+import { C_SCALE, coordToRgb, cusp, maxChroma, toeInv, type Gamut, type WheelCoord } from '../../lib/oklch';
 import { DEPTH_WHEEL_SECTORS, type ChromaDerived, type ChromaSettings } from '../../hooks/useChromaSettings';
 import { resolveHandles, sectorOf, type Handle, type SchemeState } from '../../lib/selectors';
 
@@ -23,22 +23,33 @@ export const sectorHue = (i: number): number => ((i + 0.5) * 360) / N_SECTORS;
 /** Angle of a sector's centre, degrees from the top, clockwise (same as its hue). */
 export const sectorCentre = (i: number): number => (i + 0.5) * (360 / N_SECTORS);
 
-const cuspCache = new Map<number, number>();
-/** Lightness (Lr) at which a sector's hue is most colourful. */
-export function sectorCuspLightness(i: number): number {
-  const hit = cuspCache.get(i);
+const cuspCache = new Map<string, number>();
+/** Lightness (Lr) at which a sector's hue is most colourful in the gamut. */
+export function sectorCuspLightness(i: number, gamut: Gamut = 'srgb'): number {
+  const key = `${gamut}|${i}`;
+  const hit = cuspCache.get(key);
   if (hit !== undefined) return hit;
-  const l = cusp(sectorHue(i)).l;
-  cuspCache.set(i, l);
+  const l = cusp(sectorHue(i), gamut).l;
+  cuspCache.set(key, l);
   return l;
 }
 
-/** The sector's colour: saturation is a percentage of the largest chroma sRGB offers at that hue and lightness. */
-export function sectorHex(i: number, saturation: number, lightness: number | null): string {
+/** The sector's wheel coordinate: saturation is a percentage of the largest chroma the gamut offers at that hue and lightness. */
+export function sectorCoord(i: number, saturation: number, lightness: number | null, gamut: Gamut = 'srgb'): WheelCoord {
   const h = sectorHue(i);
-  const l = lightness ?? sectorCuspLightness(i);
-  const cMax = maxChroma(h, toeInv(l));
-  return coordToRgb({ theta: h, f: (cMax * (saturation / 100)) / C_SCALE, l }).hex;
+  const l = lightness ?? sectorCuspLightness(i, gamut);
+  const cMax = maxChroma(h, toeInv(l), gamut);
+  return { theta: h, f: (cMax * (saturation / 100)) / C_SCALE, l };
+}
+
+/** The sector's sRGB hex (fallback when the gamut is wider). */
+export function sectorHex(i: number, saturation: number, lightness: number | null, gamut: Gamut = 'srgb'): string {
+  return coordToRgb(sectorCoord(i, saturation, lightness, gamut), gamut).hex;
+}
+
+/** The sector's CSS colour in the gamut. */
+export function sectorCss(i: number, saturation: number, lightness: number | null, gamut: Gamut = 'srgb'): string {
+  return coordToRgb(sectorCoord(i, saturation, lightness, gamut), gamut).css;
 }
 
 /** Sector index at a point relative to the wheel centre, or null outside the ring. */
@@ -58,26 +69,45 @@ export function angleAt(dx: number, dy: number): number {
 /** A scheme handle snapped to a sector, with its colour. */
 export interface DepthHandle extends Handle {
   sector: number;
+  /** sRGB fallback. */
   hex: string;
+  /** CSS colour in the gamut. */
+  css: string;
+  /** The sector's actual coordinate (chroma and lightness from the wheel settings). */
+  coord: WheelCoord;
 }
 
-export function resolveDepthHandles(s: SchemeState, saturation: number, lightness: number | null): DepthHandle[] {
+export function resolveDepthHandles(s: SchemeState, saturation: number, lightness: number | null, gamut: Gamut = 'srgb'): DepthHandle[] {
   return resolveHandles(s).map((h) => {
     const sector = sectorOf(h.pos.theta, N_SECTORS);
-    return { ...h, sector, hex: sectorHex(sector, saturation, lightness) };
+    const coord = sectorCoord(sector, saturation, lightness, gamut);
+    const r = coordToRgb(coord, gamut);
+    return { ...h, sector, hex: r.hex, css: r.css, coord };
   });
 }
 
-/** Pair prediction using the app's shared eye settings. */
+/** A colour for depth analysis: hex is the sRGB fallback; the coordinate, when known, is what the model uses. */
+export interface DepthColor {
+  hex: string;
+  label: string;
+  coord?: WheelCoord;
+  /** CSS colour for swatches (defaults to hex). */
+  css?: string;
+}
+
+/** Model input for a DepthColor: its coordinate when known, else its hex. */
+export const depthInput = (c: DepthColor): ColorInput => c.coord ?? c.hex;
+
+/** Pair prediction using the app's shared eye settings and the gamut in effect. */
 export function pairWithSettings(
   s: ChromaSettings,
   d: ChromaDerived,
-  a: string,
-  b: string,
-  bg = '#000000',
+  a: ColorInput,
+  b: ColorInput,
+  bg: ColorInput = '#000000',
   sign: 1 | -1 = s.sign,
 ): PairDepth {
-  return pairDepth({ a, b, bg, display: s.display, eye: d.eye, distanceMm: d.distanceMm, ipdMm: s.ipdMm, sign });
+  return pairDepth({ a, b, bg, display: s.display, gamut: d.gamut, eye: d.eye, distanceMm: d.distanceMm, ipdMm: s.ipdMm, sign });
 }
 
 /** Format millimetres as centimetres; never prints "-0.00". */

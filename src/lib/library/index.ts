@@ -10,18 +10,31 @@
 import { sanitizeScheme, defaultScheme, resolveHandles, type SchemeState, type RoleId, type Polar } from '../selectors';
 import { ROLE_IDS } from '../selectors';
 import { migrateSchemeState } from '../migrate';
+import { coordToRgb, type Gamut, type WheelCoord } from '../oklch';
+import { cssVarLines } from '../oklch/css';
 
-/** 2 = HSL-era handle positions, 3 = OKLCH coordinates (theta, f, l). */
-export const LIBRARY_FORMAT_VERSION = 3;
+/**
+ * 2 = HSL-era handle positions, 3 = OKLCH coordinates (theta, f, l),
+ * 4 = colours carry their coordinate (wide-gamut safe; hex is the sRGB fallback).
+ */
+export const LIBRARY_FORMAT_VERSION = 4;
 export const LIBRARY_MAX = 200;
 export const LIBRARY_TAG_MAX = 8;
 
 export type SchemeSource = 'artist' | 'depth' | 'palette' | 'import' | 'builtin';
 
 export interface SavedColor {
+  /** sRGB fallback (mapped into sRGB when the colour is wider). */
   hex: string;
   label: string;
   role?: RoleId;
+  /** Exact colour as a wheel coordinate, when known. */
+  coord?: WheelCoord;
+}
+
+/** CSS colour for a saved colour in a gamut: from its coordinate when it has one, else its hex. */
+export function savedColorCss(c: SavedColor, gamut: Gamut): string {
+  return c.coord ? coordToRgb(c.coord, gamut).css : c.hex;
 }
 
 export interface SavedScheme {
@@ -61,6 +74,9 @@ export interface LibraryFile {
 const HEX = /^#[0-9a-f]{6}$/i;
 const isHex = (v: unknown): v is string => typeof v === 'string' && HEX.test(v);
 const isRole = (v: unknown): v is RoleId => typeof v === 'string' && (ROLE_IDS as readonly string[]).includes(v);
+const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isCoord = (v: unknown): v is WheelCoord => !!v && typeof v === 'object' && fin((v as WheelCoord).theta) && fin((v as WheelCoord).f) && fin((v as WheelCoord).l);
+const cleanCoord = (c: WheelCoord): WheelCoord => ({ theta: ((c.theta % 360) + 360) % 360, f: Math.min(1, Math.max(0, c.f)), l: Math.min(1, Math.max(0, c.l)) });
 
 export function makeId(): string {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -82,6 +98,7 @@ function sanitizeColors(raw: unknown): SavedColor[] {
         hex: o.hex.toLowerCase(),
         label: typeof o.label === 'string' && o.label.trim() ? o.label.trim().slice(0, 24) : String.fromCharCode(65 + out.length),
         role: isRole(o.role) ? o.role : undefined,
+        coord: isCoord(o.coord) ? cleanCoord(o.coord) : undefined,
       });
     }
     if (out.length >= 24) break;
@@ -158,9 +175,12 @@ export function serializeLibrary(schemes: SavedScheme[]): string {
   return JSON.stringify(file, null, 2);
 }
 
-/** CSS custom properties for one scheme, named by role when present. */
-export function schemeToCss(s: SavedScheme): string {
-  const lines = s.colors.map((c, i) => `  --${c.role ?? `color-${String(i + 1).padStart(2, '0')}`}: ${c.hex}; /* ${c.label} */`);
+/**
+ * CSS custom properties for one scheme, named by role when present. Colours
+ * outside sRGB get a `color(display-p3 …)` override line after their hex.
+ */
+export function schemeToCss(s: SavedScheme, gamut: Gamut = 'srgb'): string {
+  const lines = s.colors.flatMap((c, i) => cssVarLines(c.role ?? `color-${String(i + 1).padStart(2, '0')}`, { hex: c.hex, css: savedColorCss(c, gamut) }, c.label));
   return `/* ${s.name} */\n:root {\n${lines.join('\n')}\n}`;
 }
 

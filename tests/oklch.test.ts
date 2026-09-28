@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
   C_SCALE,
+  coordFromCss,
   coordFromHex,
+  coordFromP3,
   coordFromRgb,
   coordToRgb,
+  linearP3ToLinearSrgb,
+  linearSrgbToLinearP3,
+  linearToOklab,
+  srgbToLinear,
   cusp,
   gamutBoundary,
   hexFromCoord,
@@ -200,9 +206,88 @@ describe('renderSlice ghost mode', () => {
 describe('lightnessRamp', () => {
   it('runs from black to white at the given hue', () => {
     const ramp = lightnessRamp(29, 0.8, 9);
-    expect(ramp[0]).toEqual({ r: 0, g: 0, b: 0 });
-    expect(ramp[8]).toEqual({ r: 255, g: 255, b: 255 });
-    const mid = rgbToOklch(ramp[4]);
+    expect(ramp[0].rgb).toEqual({ r: 0, g: 0, b: 0 });
+    expect(ramp[8].rgb).toEqual({ r: 255, g: 255, b: 255 });
+    const mid = rgbToOklch(ramp[4].rgb);
     expect(mid.h).toBeCloseTo(29, 0);
+    expect(ramp.every((r) => r.css.startsWith('#'))).toBe(true);
+  });
+});
+
+describe('Display P3', () => {
+  it('matrices are consistent: sRGB → P3 → OKLab equals sRGB → OKLab', () => {
+    for (const hex of ['#ff0000', '#00ff00', '#0000ff', '#8b4513', '#808080', '#123456']) {
+      const rgb = parseHex(hex)!;
+      const lin: [number, number, number] = [srgbToLinear(rgb.r), srgbToLinear(rgb.g), srgbToLinear(rgb.b)];
+      // Ottosson's published sRGB matrices use a slightly different sRGB→XYZ than
+      // the P3 derivation; the paths agree to ~1e-4, far below an 8-bit step.
+      const viaP3 = linearToOklab(...linearSrgbToLinearP3(lin), 'p3');
+      const direct = linearToOklab(...lin, 'srgb');
+      expect(viaP3.L).toBeCloseTo(direct.L, 3);
+      expect(viaP3.a).toBeCloseTo(direct.a, 3);
+      expect(viaP3.b).toBeCloseTo(direct.b, 3);
+      const back = linearP3ToLinearSrgb(linearSrgbToLinearP3(lin));
+      expect(back[0]).toBeCloseTo(lin[0], 6);
+      expect(back[2]).toBeCloseTo(lin[2], 6);
+    }
+  });
+
+  it('P3 reaches further than sRGB at every hue and mid lightness', () => {
+    const s = gamutBoundary(0.5, 360, 'srgb');
+    const p = gamutBoundary(0.5, 360, 'p3');
+    for (let h = 0; h < 360; h++) expect(p[h]).toBeGreaterThanOrEqual(s[h] - 1e-6);
+    // the gain is real: cyan-blue and green gain a third or more
+    expect(p[210] / s[210]).toBeGreaterThan(1.25);
+    expect(p[145] / s[145]).toBeGreaterThan(1.25);
+  });
+
+  it('a P3-only colour resolves with a P3 css string and an sRGB fallback that is mapped, not clipped', () => {
+    // vivid green at mid lightness: inside P3, outside sRGB
+    const c = { theta: 145, f: 0.7, l: 0.5 }; // C = 0.231 > sRGB max 0.179, < P3 max 0.243
+    const r = coordToRgb(c, 'p3');
+    expect(r.gamut).toBe('p3');
+    expect(r.mapped).toBe(false);
+    expect(r.inSrgb).toBe(false);
+    expect(r.css).toMatch(/^color\(display-p3 [\d.]+ [\d.]+ [\d.]+\)$/);
+    expect(r.p3![1]).toBeGreaterThan(r.p3![0]);
+    // the fallback keeps hue and lightness and sits on the sRGB edge
+    const fb = rgbToOklch(r.rgb);
+    expect(fb.h).toBeCloseTo(145, 0);
+    expect(toe(fb.L)).toBeCloseTo(0.5, 1);
+    expect(fb.C).toBeCloseTo(maxChroma(145, toeInv(0.5), 'srgb'), 2);
+    // the same coordinate resolved for sRGB is mapped and reports hex css
+    const rs = coordToRgb(c, 'srgb');
+    expect(rs.mapped).toBe(true);
+    expect(rs.css).toBe(rs.hex);
+    // an ordinary sRGB colour resolved for P3 keeps its hex css
+    const plain = coordToRgb(coordFromHex('#8b4513')!, 'p3');
+    expect(plain.inSrgb).toBe(true);
+    expect(plain.css).toBe('#8b4513');
+    expect(plain.p3).not.toBeNull();
+  });
+
+  it('P3 channels round-trip through coordFromP3 and coordFromCss', () => {
+    const c = { theta: 264, f: 0.9, l: 0.4 };
+    const r = coordToRgb(c, 'p3');
+    const back = coordFromP3(r.p3!);
+    expect(back.theta).toBeCloseTo(264, 0);
+    expect(back.l).toBeCloseTo(0.4, 2);
+    expect(back.f).toBeCloseTo(r.fEffective, 2);
+    const parsed = coordFromCss(r.css)!;
+    expect(parsed.theta).toBeCloseTo(264, 0);
+    expect(coordFromCss('#ff0000')!.theta).toBeCloseTo(29.2, 0);
+    expect(coordFromCss('nonsense')).toBeNull();
+  });
+
+  it('renderSlice in P3 fills more of the disc than in sRGB', () => {
+    const size = 96;
+    const count = (gamut: 'srgb' | 'p3') => {
+      const data = new Uint8ClampedArray(size * size * 4);
+      renderSlice(data, { size, radius: 46, l: 0.5, gamut, outside: [0, 0, 0, 0] });
+      let n = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i] === 255) n++;
+      return n;
+    };
+    expect(count('p3')).toBeGreaterThan(count('srgb') * 1.15);
   });
 });

@@ -6,8 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
-import { fmtCm, pairWithSettings } from './depthWheelModel';
-import type { DepthColor } from './PairDepthList';
+import { depthInput, fmtCm, pairWithSettings, type DepthColor } from './depthWheelModel';
 
 interface TestViewProps {
   colors: DepthColor[];
@@ -36,13 +35,13 @@ export function TestView({ colors, onClose }: TestViewProps) {
     let best: { a: DepthColor; b: DepthColor; raw: ReturnType<typeof pairWithSettings> } | null = null;
     for (let i = 0; i < colors.length; i++) {
       for (let j = i + 1; j < colors.length; j++) {
-        const raw = pairWithSettings(s, d, colors[i].hex, colors[j].hex, bg, 1);
+        const raw = pairWithSettings(s, d, depthInput(colors[i]), depthInput(colors[j]), bg, 1);
         if (raw.stable && (!best || !best.raw.stable || Math.abs(raw.deltaD) > Math.abs(best.raw.deltaD))) best = { a: colors[i], b: colors[j], raw };
       }
     }
     return best;
   }, [colors, s, d, bg]);
-  const calibrated = pair ? pairWithSettings(s, d, pair.a.hex, pair.b.hex, bg) : null;
+  const calibrated = pair ? pairWithSettings(s, d, depthInput(pair.a), depthInput(pair.b), bg) : null;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -76,12 +75,12 @@ export function TestView({ colors, onClose }: TestViewProps) {
       <div className="flex-1 flex flex-col items-center justify-center gap-8 px-4">
         <div className="flex flex-wrap justify-center gap-4 md:gap-6 max-w-2xl">
           {colors.map((c) => (
-            <div key={c.label} className="w-24 h-24 md:w-36 md:h-36 rounded-2xl" style={{ background: c.hex }} title={`${c.label} ${c.hex}`} />
+            <div key={c.label} className="w-24 h-24 md:w-36 md:h-36 rounded-2xl" style={{ background: c.css ?? c.hex }} title={`${c.label} ${c.hex}`} />
           ))}
         </div>
         <div className="text-3xl md:text-5xl font-bold tracking-wide text-center leading-tight flex flex-wrap justify-center gap-x-4">
           {colors.map((c) => (
-            <span key={c.label} style={{ color: c.hex }}>
+            <span key={c.label} style={{ color: c.css ?? c.hex }}>
               {c.label.toUpperCase()}
             </span>
           ))}

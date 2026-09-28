@@ -18,13 +18,14 @@ export interface DepthVerdict {
 export function useDepthVerdict(s: SavedScheme): DepthVerdict {
   const { settings, derived } = useChromaSettings();
   return useMemo(() => {
-    const bg = s.background ?? '#000000';
-    const colors = s.colors.filter((c) => c.hex !== bg);
+    const bgColor = s.colors.find((c) => c.role === 'background' && c.hex === s.background);
+    const bg = bgColor?.coord ?? s.background ?? '#000000';
+    const colors = s.colors.filter((c) => c !== bgColor && c.hex !== (s.background ?? '#000000'));
     let best: { a: string; b: string; disparity: number; label: string; level: number } | null = null;
     let unstable = false;
     for (let i = 0; i < colors.length; i++) {
       for (let j = i + 1; j < colors.length; j++) {
-        const p = pairWithSettings(settings, derived, colors[i].hex, colors[j].hex, bg);
+        const p = pairWithSettings(settings, derived, colors[i].coord ?? colors[i].hex, colors[j].coord ?? colors[j].hex, bg);
         if (!p.ok) continue;
         if (!p.stable) {
           unstable = true;

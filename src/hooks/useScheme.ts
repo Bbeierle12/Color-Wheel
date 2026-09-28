@@ -9,9 +9,12 @@ import { DEFAULT_BASE, defaultScheme, sanitizeScheme, type RoleId, type SchemeSt
 import { migrateSchemeState } from '../lib/migrate';
 
 export interface SentColor {
+  /** sRGB fallback. */
   hex: string;
   label: string;
   role?: RoleId;
+  /** Exact colour, when it came from a wheel. */
+  coord?: { theta: number; f: number; l: number };
 }
 
 export interface SchemeStore {
@@ -44,7 +47,12 @@ export function sanitizeSchemeStore(raw: unknown): SchemeStore {
     ? r.sent
         .filter((c): c is SentColor => !!c && typeof c === 'object' && HEX.test(String((c as SentColor).hex)) && typeof (c as SentColor).label === 'string')
         .slice(0, 6)
-        .map((c) => ({ hex: c.hex.toLowerCase(), label: c.label.slice(0, 24), role: c.role }))
+        .map((c) => ({
+          hex: c.hex.toLowerCase(),
+          label: c.label.slice(0, 24),
+          role: c.role,
+          coord: c.coord && [c.coord.theta, c.coord.f, c.coord.l].every(Number.isFinite) ? { theta: c.coord.theta, f: c.coord.f, l: c.coord.l } : undefined,
+        }))
     : null;
   return {
     artist: sanitizeScheme(r.artist, d.artist),

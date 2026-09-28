@@ -14,7 +14,9 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useChromaSettings, WHEEL_LIGHTNESS_RANGE } from '../../hooks/useChromaSettings';
-import { useScheme } from '../../hooks/useScheme';
+import { useScheme, type SentColor } from '../../hooks/useScheme';
+import { coordToRgb } from '../../lib/oklch';
+import { GamutControl } from '../ColorWheel/GamutControl';
 import { applyDrag, referenceHandleId, snapTheta } from '../../lib/selectors';
 import { SelectorControls } from '../Selectors/SelectorControls';
 import { HandleList } from '../Selectors/HandleList';
@@ -30,20 +32,21 @@ const btn = (on = false) =>
   `px-3 py-2 text-xs rounded-xl border min-h-[40px] ${on ? 'border-violet-500 bg-violet-700 text-white' : 'border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'}`;
 
 export function DepthPage() {
-  const { settings: s, update } = useChromaSettings();
+  const { settings: s, derived, update } = useChromaSettings();
+  const gamut = derived.gamut;
   const { depth: scheme, setDepth, activeDepth, setActiveDepth, sent, clearSent } = useScheme();
   const [showModel, setShowModel] = useState(false);
   const [test, setTest] = useState<'scheme' | 'sent' | null>(null);
   const dragRef = useRef<string | null>(null);
 
-  const handles = useMemo(() => resolveDepthHandles(scheme, s.wheelSaturation, s.wheelLightness), [scheme, s.wheelSaturation, s.wheelLightness]);
+  const handles = useMemo(() => resolveDepthHandles(scheme, s.wheelSaturation, s.wheelLightness, gamut), [scheme, s.wheelSaturation, s.wheelLightness, gamut]);
   const uniform = s.wheelLightness !== null;
   const lightnessValue = s.wheelLightness ?? 0.6;
   const activeId = handles.some((h) => h.id === activeDepth) ? (activeDepth as string) : handles[0].id;
   const reference = handles.find((h) => h.id === referenceHandleId(scheme)) ?? handles[0];
   const background = scheme.type === 'roles' ? handles.find((h) => h.role === 'background') : undefined;
-  const schemeColors: DepthColor[] = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label }));
-  const allSchemeColors: DepthColor[] = handles.map((h) => ({ hex: h.hex, label: h.label }));
+  const schemeColors: DepthColor[] = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label, coord: h.coord, css: h.css }));
+  const allSchemeColors: DepthColor[] = handles.map((h) => ({ hex: h.hex, label: h.label, coord: h.coord, css: h.css }));
 
   const onPointerStart = useCallback(
     (handleId: string | null, theta: number) => {
@@ -72,7 +75,8 @@ export function DepthPage() {
   }, []);
 
   const sentBg = sent?.find((c) => c.role === 'background');
-  const sentColors: DepthColor[] = (sent ?? []).filter((c) => c !== sentBg).map((c) => ({ hex: c.hex, label: c.label }));
+  const sentCss = (c: SentColor) => (c.coord ? coordToRgb(c.coord, gamut).css : c.hex);
+  const sentColors: DepthColor[] = (sent ?? []).filter((c) => c !== sentBg).map((c) => ({ hex: c.hex, label: c.label, coord: c.coord, css: sentCss(c) }));
 
   return (
     <div className="min-h-full bg-[#050508] text-zinc-200">
@@ -88,7 +92,7 @@ export function DepthPage() {
 
         <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-6 items-start">
           <div className="space-y-4">
-            <DepthWheel saturation={s.wheelSaturation} lightness={s.wheelLightness} handles={handles} activeId={activeId} onPointerStart={onPointerStart} onPointerDrag={onPointerDrag} onPointerEnd={onPointerEnd} />
+            <DepthWheel key={gamut} gamut={gamut} saturation={s.wheelSaturation} lightness={s.wheelLightness} handles={handles} activeId={activeId} onPointerStart={onPointerStart} onPointerDrag={onPointerDrag} onPointerEnd={onPointerEnd} />
             <p className="text-center text-[12px] text-zinc-400">
               Tap to place the base; drag a handle to shape the scheme. Look at the wheel on a dark screen at arm's length: do some sectors seem to float above others?
             </p>
@@ -110,12 +114,12 @@ export function DepthPage() {
                 <div className="flex flex-wrap gap-2 mb-3">
                   {sent.map((c) => (
                     <span key={c.label} className="inline-flex items-center gap-1.5 text-[11px] text-zinc-300">
-                      <span className="inline-block w-4 h-4 rounded border border-white/25" style={{ background: c.hex }} />
+                      <span className="inline-block w-4 h-4 rounded border border-white/25" style={{ background: sentCss(c) }} />
                       {c.label} <span className="font-mono text-zinc-500">{c.hex}</span>
                     </span>
                   ))}
                 </div>
-                <PairDepthList colors={sentColors} background={sentBg?.hex} backgroundLabel={sentBg ? 'Background' : undefined} dark />
+                <PairDepthList colors={sentColors} background={sentBg ? { hex: sentBg.hex, label: sentBg.label, coord: sentBg.coord, css: sentCss(sentBg) } : undefined} backgroundLabel={sentBg ? 'Background' : undefined} dark />
               </div>
             )}
           </div>
@@ -135,15 +139,18 @@ export function DepthPage() {
 
             <SelectorControls scheme={scheme} onChange={setDepth} depthWheel dark activeHandle={activeId} />
             <div className="mt-3">
+              <GamutControl active={gamut} dark />
+            </div>
+            <div className="mt-3">
               <HandleList handles={handles} activeId={activeId} onSelect={setActiveDepth} dark />
             </div>
             <div className="mt-3">
-              <SaveSchemeForm wheel="depth" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role }))} dark />
+              <SaveSchemeForm wheel="depth" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role, coord: h.coord }))} dark />
             </div>
 
             <div className="mt-5">
               <h3 className="text-xs uppercase tracking-wider text-zinc-400 font-medium mb-2">Predicted depth</h3>
-              <PairDepthList colors={schemeColors} background={background?.hex} backgroundLabel={background ? 'Background' : undefined} dark />
+              <PairDepthList colors={schemeColors} background={background ? { hex: background.hex, label: background.label, coord: background.coord, css: background.css } : undefined} backgroundLabel={background ? 'Background' : undefined} dark />
             </div>
 
             <div className="mt-5">
@@ -218,7 +225,7 @@ export function DepthPage() {
       </div>
 
       {test === 'scheme' && <TestView colors={allSchemeColors} onClose={() => setTest(null)} />}
-      {test === 'sent' && sent && <TestView colors={sent.map((c) => ({ hex: c.hex, label: c.label }))} onClose={() => setTest(null)} />}
+      {test === 'sent' && sent && <TestView colors={sent.map((c) => ({ hex: c.hex, label: c.label, coord: c.coord, css: sentCss(c) }))} onClose={() => setTest(null)} />}
     </div>
   );
 }

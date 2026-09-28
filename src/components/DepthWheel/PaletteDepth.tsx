@@ -12,7 +12,7 @@ interface PaletteDepthProps {
 
 export function PaletteDepth({ palette }: PaletteDepthProps) {
   if (palette.length < 2) return null;
-  const colors = palette.map((p) => ({ hex: p.hex, label: p.role ? p.role : p.hex }));
+  const colors = palette.map((p) => ({ hex: p.hex, label: p.role ? p.role : p.hex, coord: p.coord, css: p.css }));
   return (
     <>
       <div className="col-span-2 mt-2 text-[11px] uppercase tracking-wider text-zinc-500">Depth pairs</div>

@@ -6,9 +6,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GAP_PX, INNER_FRAC, N_SECTORS, OUTER_FRAC, angleAt, sectorCentre, sectorHex, type DepthHandle } from './depthWheelModel';
+import { GAP_PX, INNER_FRAC, N_SECTORS, OUTER_FRAC, angleAt, sectorCentre, sectorCss, type DepthHandle } from './depthWheelModel';
+import type { Gamut } from '../../lib/oklch';
+import { contextSettings } from '../../lib/oklch/display';
 
 interface DepthWheelProps {
+  /** Gamut the sectors are drawn in (the canvas is created in that colour space). */
+  gamut?: Gamut;
   saturation: number;
   /** Shared toe lightness, or null for each hue at its own cusp. */
   lightness: number | null;
@@ -29,7 +33,7 @@ interface Geom {
 
 const HIT_PX = 22;
 
-export function DepthWheel({ saturation, lightness, handles, activeId, onPointerStart, onPointerDrag, onPointerEnd }: DepthWheelProps) {
+export function DepthWheel({ gamut = 'srgb', saturation, lightness, handles, activeId, onPointerStart, onPointerDrag, onPointerEnd }: DepthWheelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const geomRef = useRef<Geom>({ cx: 0, cy: 0, r0: 0, r1: 0 });
@@ -39,7 +43,7 @@ export function DepthWheel({ saturation, lightness, handles, activeId, onPointer
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', contextSettings(gamut));
     if (!ctx) return;
 
     const size = Math.max(120, Math.round(wrap.clientWidth));
@@ -71,7 +75,7 @@ export function DepthWheel({ saturation, lightness, handles, activeId, onPointer
 
     for (let i = 0; i < N_SECTORS; i++) {
       sectorPath(i);
-      ctx.fillStyle = sectorHex(i, saturation, lightness);
+      ctx.fillStyle = sectorCss(i, saturation, lightness, gamut);
       ctx.fill();
     }
     ctx.strokeStyle = '#000';
@@ -109,7 +113,7 @@ export function DepthWheel({ saturation, lightness, handles, activeId, onPointer
       ctx.textBaseline = 'middle';
       ctx.fillText(short, x, y + 0.5);
     }
-  }, [saturation, lightness, handles, activeId]);
+  }, [gamut, saturation, lightness, handles, activeId]);
 
   useEffect(() => {
     draw();

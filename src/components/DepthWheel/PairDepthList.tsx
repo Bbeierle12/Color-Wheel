@@ -6,17 +6,14 @@
 
 import { useMemo, useState } from 'react';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
-import { fmtCm, pairWithSettings } from './depthWheelModel';
+import { depthInput, fmtCm, pairWithSettings, type DepthColor } from './depthWheelModel';
 
-export interface DepthColor {
-  hex: string;
-  label: string;
-}
+export type { DepthColor } from './depthWheelModel';
 
 interface PairDepthListProps {
   colors: DepthColor[];
   /** Fixed background; when omitted a black/white toggle is shown. */
-  background?: string;
+  background?: DepthColor | string;
   backgroundLabel?: string;
   dark?: boolean;
   maxRows?: number;
@@ -28,12 +25,13 @@ const LEVEL_DARK = ['text-zinc-500', 'text-lime-400', 'text-amber-400', 'text-re
 export function PairDepthList({ colors, background, backgroundLabel, dark = false, maxRows = 12 }: PairDepthListProps) {
   const { settings: s, derived: d } = useChromaSettings();
   const [toggleBg, setToggleBg] = useState<'#000000' | '#ffffff'>('#000000');
-  const bg = background ?? toggleBg;
+  const bgColor: DepthColor = background === undefined ? { hex: toggleBg, label: 'background' } : typeof background === 'string' ? { hex: background, label: 'background' } : background;
+  const bg = depthInput(bgColor);
 
   const { rows, unstable } = useMemo(() => {
     const rows: { i: number; j: number; p: ReturnType<typeof pairWithSettings> }[] = [];
     for (let i = 0; i < colors.length; i++) {
-      for (let j = i + 1; j < colors.length; j++) rows.push({ i, j, p: pairWithSettings(s, d, colors[i].hex, colors[j].hex, bg) });
+      for (let j = i + 1; j < colors.length; j++) rows.push({ i, j, p: pairWithSettings(s, d, depthInput(colors[i]), depthInput(colors[j]), bg) });
     }
     const score = (r: (typeof rows)[number]) => (r.p.stable ? Math.abs(r.p.disparity) : -1);
     rows.sort((a, b) => score(b) - score(a));
@@ -55,7 +53,7 @@ export function PairDepthList({ colors, background, backgroundLabel, dark = fals
         <span className={`text-[11px] ${muted}`}>
           {background ? (
             <>
-              on {backgroundLabel ?? 'background'} <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} align-[-2px] ml-1`} style={{ background }} />
+              on {backgroundLabel ?? 'background'} <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} align-[-2px] ml-1`} style={{ background: bgColor.css ?? bgColor.hex }} />
             </>
           ) : (
             'Pairs, strongest first'
@@ -74,8 +72,8 @@ export function PairDepthList({ colors, background, backgroundLabel, dark = fals
       {rows.map(({ i, j, p }) => {
         const sw = (
           <>
-            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder}`} style={{ background: colors[i].hex }} />
-            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} -ml-1`} style={{ background: colors[j].hex }} />
+            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder}`} style={{ background: colors[i].css ?? colors[i].hex }} />
+            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} -ml-1`} style={{ background: colors[j].css ?? colors[j].hex }} />
           </>
         );
         const names = (

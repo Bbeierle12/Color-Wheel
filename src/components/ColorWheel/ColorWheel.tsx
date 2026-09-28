@@ -41,6 +41,7 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
     scheme,
     setScheme,
     lightness,
+    gamut,
     setLightness,
     stateLabel,
     palette,
@@ -71,6 +72,7 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
           <div className="bg-white border border-zinc-200 rounded-2xl overflow-hidden flex lg:min-h-[620px]">
             <div ref={stageRef} className="relative flex-1 min-w-0 aspect-square lg:aspect-auto">
               <canvas
+                key={gamut}
                 ref={canvasRef}
                 className="block w-full h-full"
                 style={{ touchAction: 'none' }}
@@ -87,10 +89,12 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
               <span className="text-[10px] text-zinc-500 leading-none">L</span>
               <div className="flex-1 min-h-0 w-14">
                 <LightnessStrip
+                  key={gamut}
+                  gamut={gamut}
                   theta={active.pos.theta}
                   f={active.pos.f}
                   value={lightness}
-                  marks={handles.map((h) => ({ id: h.id, l: h.pos.l, hex: h.hex, label: h.label, active: h.active }))}
+                  marks={handles.map((h) => ({ id: h.id, l: h.pos.l, fill: h.css, label: h.label, active: h.active }))}
                   onChange={setLightness}
                   onSelect={setActive}
                 />
@@ -111,6 +115,7 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
           onSelectHandle={setActive}
           scheme={scheme}
           onSchemeChange={setScheme}
+          gamut={gamut}
           stateLabel={stateLabel}
           showDecor={showDecor}
           showHandles={showHandles}

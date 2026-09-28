@@ -3,6 +3,7 @@ import { coordToRgb } from '../src/lib/oklch';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   LIBRARY_FORMAT_VERSION,
+  savedColorCss,
   STARTER_DEFINITIONS,
   entryFromScheme,
   migrateLegacyCombo,
@@ -154,9 +155,29 @@ describe('loadLibrary / saveLibrary', () => {
     expect(loadLibrary()).toEqual([]);
     saveLibrary([roles, STARTERS[0]]);
     const stored = JSON.parse(localStorage.getItem(LIBRARY_STORAGE_KEY)!);
-    expect(stored.version).toBe(3);
+    expect(stored.version).toBe(4);
     expect(stored.schemes).toHaveLength(1);
     expect(loadLibrary()).toHaveLength(1);
+  });
+
+  it('v4 colours keep their coordinate; v3 entries load without one and get hex-only CSS', () => {
+    const c = { theta: 145, f: 0.7, l: 0.5 }; // outside sRGB
+    const entry = sanitizeSavedScheme({ id: 'w', name: 'Wide', colors: [{ hex: '#00b04a', label: 'A', coord: c }, { hex: '#123456', label: 'B' }] })!;
+    expect(entry.colors[0].coord).toEqual(c);
+    expect(entry.colors[1].coord).toBeUndefined();
+    expect(savedColorCss(entry.colors[0], 'p3')).toMatch(/^color\(display-p3/);
+    expect(savedColorCss(entry.colors[0], 'srgb')).toMatch(/^#/);
+    expect(savedColorCss(entry.colors[1], 'p3')).toBe('#123456');
+    const css = schemeToCss(entry, 'p3');
+    expect(css).toContain('--color-01: #00b04a;');
+    expect(css).toContain('--color-01: color(display-p3');
+    expect(css.split('--color-02').length).toBe(2); // one line: inside sRGB
+    // junk coordinates are dropped, not stored
+    const junk = sanitizeSavedScheme({ name: 'J', colors: [{ hex: '#ffffff', label: 'A', coord: { theta: 'x' } }] })!;
+    expect(junk.colors[0].coord).toBeUndefined();
+    // a v3 file (no coords) parses with legacyPositions off
+    const v3 = parseLibraryFile(JSON.stringify({ version: 3, exportedAt: 1, schemes: [{ id: 'a', name: 'A', colors: ['#ff0000'], scheme: { type: 'single', base: { theta: 29, f: 0.78, l: 0.57 }, params: {}, free: [] }, wheel: 'artist' }] }));
+    expect(v3[0].scheme!.base).toEqual({ theta: 29, f: 0.78, l: 0.57 });
   });
 
   it('converts a v2 store (bare array with HSL-era positions) to OKLCH coordinates', () => {

@@ -15,6 +15,8 @@ import {
   type DisplayKey,
   type EffectiveEye,
 } from '../lib/chromostereopsis';
+import type { Gamut } from '../lib/oklch';
+import { isGamutSetting, resolveGamut, type GamutSetting } from '../lib/oklch/display';
 
 export const DEPTH_WHEEL_SECTORS = 36;
 
@@ -29,6 +31,11 @@ export interface ChromaSettings {
   distanceCm: number;
   ipdMm: number;
   display: DisplayKey;
+  /**
+   * Colour gamut the wheels render and resolve colours in: 'auto' follows the
+   * screen (Display P3 when the panel and browser support it), or force one.
+   */
+  gamut: GamutSetting;
   /** Observer calibration: +1 model sign, −1 flipped. */
   sign: 1 | -1;
   /** Depth wheel saturation, percent of the largest chroma each sector can show. */
@@ -52,6 +59,7 @@ export const CHROMA_DEFAULTS: ChromaSettings = Object.freeze({
   distanceCm: 40,
   ipdMm: 63,
   display: 'oled',
+  gamut: 'auto',
   sign: 1,
   wheelSaturation: 100,
   wheelLightness: null,
@@ -79,6 +87,7 @@ export function sanitizeChromaSettings(raw: unknown): ChromaSettings {
     distanceCm: inRange(r.distanceCm, 20, 300) ? r.distanceCm : d.distanceCm,
     ipdMm: inRange(r.ipdMm, 50, 76) ? r.ipdMm : d.ipdMm,
     display: isDisplayKey(r.display) ? r.display : d.display,
+    gamut: isGamutSetting(r.gamut) ? r.gamut : d.gamut,
     sign: r.sign === -1 ? -1 : 1,
     wheelSaturation: inRange(r.wheelSaturation, 0, 100) ? r.wheelSaturation : d.wheelSaturation,
     wheelLightness: inRange(r.wheelLightness, WHEEL_LIGHTNESS_RANGE.min, WHEEL_LIGHTNESS_RANGE.max) ? r.wheelLightness : null,
@@ -110,6 +119,8 @@ export interface ChromaDerived {
   effOffsetMm: number;
   eye: EffectiveEye;
   distanceMm: number;
+  /** The gamut in effect: the setting, or what the screen supports on 'auto'. */
+  gamut: Gamut;
 }
 
 export function deriveChroma(s: ChromaSettings): ChromaDerived {
@@ -120,7 +131,7 @@ export function deriveChroma(s: ChromaSettings): ChromaDerived {
     scePeakMm: s.scePeakMm,
     rho,
   });
-  return { rho, effOffsetMm, eye: { effLeftMm: effOffsetMm, effRightMm: effOffsetMm }, distanceMm: s.distanceCm * 10 };
+  return { rho, effOffsetMm, eye: { effLeftMm: effOffsetMm, effRightMm: effOffsetMm }, distanceMm: s.distanceCm * 10, gamut: resolveGamut(s.gamut) };
 }
 
 export interface ChromaContextValue {

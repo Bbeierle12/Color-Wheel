@@ -6,7 +6,10 @@ export interface HandleRow {
   id: string;
   label: string;
   role?: string;
+  /** sRGB fallback hex. */
   hex: string;
+  /** CSS colour for the swatch when the colour is wider than sRGB. */
+  css?: string;
   isBase: boolean;
 }
 
@@ -33,13 +36,16 @@ export function HandleList({ handles, activeId, onSelect, dark = false }: Handle
           className={`flex items-center gap-2 px-2 py-1.5 rounded-xl border text-left min-h-[40px] ${h.id === activeId ? on : off}`}
           onClick={() => onSelect(h.id)}
         >
-          <span className="inline-block w-6 h-6 rounded-md border border-black/10 shrink-0" style={{ background: h.hex }} />
+          <span className="inline-block w-6 h-6 rounded-md border border-black/10 shrink-0" style={{ background: h.css ?? h.hex }} />
           <span className="min-w-0">
             <span className={`block text-xs font-medium ${text} break-words`}>
               {h.label}
               {h.isBase && <span className={`ml-1 text-[10px] ${muted}`}>base</span>}
             </span>
-            <span className={`block text-[10px] font-mono ${muted}`}>{h.hex}</span>
+            <span className={`block text-[10px] font-mono ${muted}`}>
+              {h.hex}
+              {h.css && h.css !== h.hex && <span className="ml-1 text-emerald-600 not-italic" title="Outside sRGB; shown in Display P3">P3</span>}
+            </span>
           </span>
         </button>
       ))}

@@ -110,7 +110,7 @@ export function PaletteManager({
             type="button"
             className="w-[46px] h-[28px] rounded-lg border border-zinc-200 relative group"
             title={`${swatch.role ? `${swatch.role} · ` : ''}${swatch.name}: ${swatch.hex}`}
-            style={{ background: swatch.hex }}
+            style={{ background: swatch.css ?? swatch.hex }}
             onClick={() => onRemoveSwatch(swatch.id)}
           >
             <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/30 rounded-lg text-white text-xs">

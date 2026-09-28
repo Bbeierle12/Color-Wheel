@@ -7,6 +7,8 @@ import type { PaletteSwatch, TintShadeStep, RGB, HSL } from '../types';
 import { rgbToHex } from '../utils/colorMath';
 import { rgbToHsl } from '../utils/colorConversions';
 import { hueName } from '../utils/artistDescriptors';
+import type { WheelCoord } from '../lib/oklch';
+import { cssVarLines } from '../lib/oklch/css';
 
 interface SwatchInput {
   rgb: RGB;
@@ -14,6 +16,8 @@ interface SwatchInput {
   hsl: HSL;
   hueLabel: string;
   theta: number;
+  coord?: WheelCoord;
+  css?: string;
 }
 
 interface HarmonySwatchInput {
@@ -29,7 +33,19 @@ export interface SchemeSwatchInput {
   hsl: HSL;
   name: string;
   role?: string;
+  coord?: WheelCoord;
+  css?: string;
 }
+
+export interface LoadColorInput {
+  hex: string;
+  role?: string;
+  name?: string;
+  coord?: WheelCoord;
+  css?: string;
+}
+
+
 
 export interface UsePaletteReturn {
   palette: PaletteSwatch[];
@@ -42,8 +58,8 @@ export interface UsePaletteReturn {
   removeSwatch: (id: string) => void;
   clearPalette: () => void;
   copyPaletteCss: () => Promise<void>;
-  /** Replace the entire palette with hex strings or {hex, role, name} entries (e.g. from a saved scheme). */
-  loadColors: (colors: (string | { hex: string; role?: string; name?: string })[]) => void;
+  /** Replace the entire palette with hex strings or {hex, role, name, coord} entries (e.g. from a saved scheme). */
+  loadColors: (colors: (string | LoadColorInput)[]) => void;
 }
 
 const MAX_SWATCHES = 24;
@@ -62,6 +78,8 @@ export function usePalette(): UsePaletteReturn {
       rgb: input.rgb,
       hsl: input.hsl,
       name: `${input.hueLabel} ${input.theta.toFixed(0)}°`,
+      coord: input.coord,
+      css: input.css,
     };
     setPalette((prev) => {
       if (prev.some((p) => p.hex.toLowerCase() === sw.hex.toLowerCase())) return prev;
@@ -89,7 +107,7 @@ export function usePalette(): UsePaletteReturn {
   }, []);
 
   const addSwatches = useCallback((inputs: SchemeSwatchInput[]) => {
-    const fresh: PaletteSwatch[] = inputs.map((i) => ({ id: makeId(), hex: i.hex, rgb: i.rgb, hsl: i.hsl, name: i.name, role: i.role }));
+    const fresh: PaletteSwatch[] = inputs.map((i) => ({ id: makeId(), hex: i.hex, rgb: i.rgb, hsl: i.hsl, name: i.name, role: i.role, coord: i.coord, css: i.css }));
     setPalette((prev) => {
       const roles = new Set(fresh.map((f) => f.role).filter(Boolean));
       const kept = prev.filter((p) => !(p.role && roles.has(p.role)));
@@ -123,7 +141,7 @@ export function usePalette(): UsePaletteReturn {
     setPalette([]);
   }, []);
 
-  const loadColors = useCallback((colors: (string | { hex: string; role?: string; name?: string })[]) => {
+  const loadColors = useCallback((colors: (string | LoadColorInput)[]) => {
     const swatches: PaletteSwatch[] = colors
       .slice(0, MAX_SWATCHES)
       .map((c) => {
@@ -142,6 +160,8 @@ export function usePalette(): UsePaletteReturn {
           hsl,
           name: entry.name ?? `${hueName(hsl.h)} ${hsl.h.toFixed(0)}°`,
           role: entry.role,
+          coord: entry.coord,
+          css: entry.css,
         };
       });
     setPalette(swatches);
@@ -152,7 +172,7 @@ export function usePalette(): UsePaletteReturn {
     const lines = palette
       .slice()
       .reverse()
-      .map((p, i) => `  --${p.role ?? `swatch-${String(i + 1).padStart(2, '0')}`}: ${p.hex}; /* ${p.name} */`);
+      .flatMap((p, i) => cssVarLines(p.role ?? `swatch-${String(i + 1).padStart(2, '0')}`, p, p.name));
     return `:root {\n${lines.join('\n')}\n}`;
   }, [palette]);
 

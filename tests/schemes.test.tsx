@@ -97,6 +97,24 @@ describe('artist wheel selectors', () => {
     expect(stored.artist.free[2].l).toBeGreaterThanOrEqual(0.4);
   });
 
+  it('forcing Display P3 widens the complement and marks it as outside sRGB; Auto falls back to sRGB here', () => {
+    render(<App />);
+    expect(screen.getAllByText('sRGB')[0]).toBeInTheDocument(); // jsdom has no P3 screen
+    const before = handleRows()[1].textContent;
+    fireEvent.change(screen.getAllByLabelText(/colour gamut/i)[0], { target: { value: 'p3' } });
+    expect(JSON.parse(localStorage.getItem(CHROMA_STORAGE_KEY)!).gamut).toBe('p3');
+    expect(screen.getAllByText(/Display P3 \(simulated\)/)[0]).toBeInTheDocument();
+    // the cyan complement at red's chroma lies outside sRGB: it now carries a P3 tag and its fallback hex may differ
+    expect(handleRows()[1]).toHaveTextContent('P3');
+    expect(handleRows()[0]).not.toHaveTextContent('P3'); // red itself is an sRGB colour
+    // CSS readout of the active handle stays hex (inside sRGB); select B and it becomes a P3 colour
+    fireEvent.click(handleRows()[1]);
+    expect(screen.getByText(/^color\(display-p3/)).toBeInTheDocument();
+    expect(screen.getByText(/outside sRGB/)).toBeInTheDocument();
+    fireEvent.change(screen.getAllByLabelText(/colour gamut/i)[0], { target: { value: 'srgb' } });
+    expect(handleRows()[1].textContent).toBe(before);
+  });
+
   it('free selector can add handles up to six', () => {
     render(<App />);
     fireEvent.change(screen.getByLabelText(/^Selector$/i), { target: { value: 'free' } });

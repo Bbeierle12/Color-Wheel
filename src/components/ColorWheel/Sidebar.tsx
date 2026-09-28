@@ -12,6 +12,8 @@ import { SelectorControls } from '../Selectors/SelectorControls';
 import { HandleList } from '../Selectors/HandleList';
 import { PairDepthList } from '../DepthWheel/PairDepthList';
 import { SaveSchemeForm } from '../Library/SaveSchemeForm';
+import { GamutControl } from './GamutControl';
+import type { Gamut } from '../../lib/oklch';
 
 interface SidebarProps {
   sample: Sample | null;
@@ -21,6 +23,8 @@ interface SidebarProps {
   onSelectHandle: (id: string) => void;
   scheme: SchemeState;
   onSchemeChange: (s: SchemeState) => void;
+  /** Gamut the wheel is rendering in. */
+  gamut: Gamut;
   stateLabel: string;
   showDecor: boolean;
   showHandles: boolean;
@@ -51,6 +55,7 @@ export function Sidebar({
   onSelectHandle,
   scheme,
   onSchemeChange,
+  gamut,
   stateLabel,
   showDecor,
   showHandles,
@@ -72,19 +77,20 @@ export function Sidebar({
   const readout = sample ?? activeSample;
   const active = handles.find((h) => h.id === activeId) ?? handles[0];
   const background = scheme.type === 'roles' ? handles.find((h) => h.role === 'background') : undefined;
-  const depthColors = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label }));
+  const depthColors = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label, coord: h.pos, css: h.css }));
 
   return (
     <aside className="bg-white border border-zinc-200 rounded-2xl p-3 h-fit sticky top-4">
       <SwatchDisplay sample={sample} active={active} />
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2 items-center">
         <button className={toggleClass(showDecor)} onClick={onToggleDecor} type="button">
           Decorations: {showDecor ? 'On' : 'Off'}
         </button>
         <button className={toggleClass(showHandles)} onClick={onToggleHandles} type="button">
           Handles: {showHandles ? 'On' : 'Off'}
         </button>
+        <GamutControl active={gamut} />
       </div>
 
       {/* Scheme */}
@@ -104,13 +110,13 @@ export function Sidebar({
         </button>
       </div>
       <div className="mt-3">
-        <SaveSchemeForm wheel="artist" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role }))} />
+        <SaveSchemeForm wheel="artist" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role, coord: h.pos }))} />
       </div>
 
       {/* Chromostereopsis for the scheme */}
       <div className="mt-4 text-[11px] uppercase tracking-wider text-zinc-500">Depth (chromostereopsis)</div>
       <div className="mt-2">
-        <PairDepthList colors={depthColors} background={background?.hex} backgroundLabel={background ? 'Background' : undefined} />
+        <PairDepthList colors={depthColors} background={background ? { hex: background.hex, label: background.label, coord: background.pos, css: background.css } : undefined} backgroundLabel={background ? 'Background' : undefined} />
       </div>
 
       {/* Color info grid */}
@@ -134,11 +140,14 @@ export function Sidebar({
         <div className="text-zinc-500">Value proxy</div>
         <div className="text-right font-mono">{`V≈${fmt(readout.valueProxy, 2)} / 10`}</div>
 
-        <div className="text-zinc-500">HEX</div>
-        <div className="text-right font-mono">{readout.hex}</div>
-
         <div className="text-zinc-500">CSS</div>
-        <div className="text-right font-mono">{readout.cssRgb}</div>
+        <div className="text-right font-mono break-all">{readout.css}</div>
+
+        <div className="text-zinc-500">{readout.inSrgb ? 'HEX' : 'sRGB fallback'}</div>
+        <div className="text-right font-mono">
+          {readout.hex}
+          {!readout.inSrgb && <span className="ml-1 text-[10px] text-amber-700">outside sRGB</span>}
+        </div>
 
         <div className="text-zinc-500">Contrast vs white / black</div>
         <div className="text-right font-mono">{`${fmt(readout.contrastWhite, 2)} / ${fmt(readout.contrastBlack, 2)}`}</div>
