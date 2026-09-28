@@ -74,6 +74,9 @@ export function coordToOff(c: WheelCoord): Point {
 
 // -------------------- Bitmap Rendering --------------------
 
+/** Opacity (0–255) of the out-of-gamut ghost over the white page. */
+export const GHOST_ALPHA = 92;
+
 /**
  * Render the slice at lightness `l` into a square context of `size` pixels
  * (the disc scales with the size; geometry is in OFF_SIZE units).
@@ -84,7 +87,9 @@ export function renderWheelBitmap(offCtx: CanvasRenderingContext2D, l: number, s
     size,
     radius: (MODEL.R_color / OFF_SIZE) * size,
     l,
-    outside: [236, 236, 240, 255],
+    // Outside sRGB: a faded ghost of the edge colour (what a tap there gives); the
+    // boundary curve drawn by drawDecor marks where real colours end.
+    ghostAlpha: GHOST_ALPHA,
     background: [255, 255, 255, 0],
   });
   offCtx.putImageData(img, 0, 0);

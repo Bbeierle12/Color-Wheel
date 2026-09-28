@@ -271,10 +271,27 @@ export interface SliceOptions {
   radius: number;
   /** Toe lightness of the slice. */
   l: number;
-  /** RGBA for pixels inside the disc but outside sRGB. */
+  /** RGBA for pixels inside the disc but outside sRGB (ignored when `ghostAlpha` is set). */
   outside?: [number, number, number, number];
+  /**
+   * Instead of a flat colour, paint pixels outside sRGB with the gamut-edge
+   * colour of their hue (what a tap there would give) at this alpha, 0–255.
+   */
+  ghostAlpha?: number;
   /** RGBA for pixels outside the disc. */
   background?: [number, number, number, number];
+}
+
+/** sRGB bytes of the gamut edge at each whole degree of hue for one lightness. */
+function edgeColours(L: number, boundary: Float32Array): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(boundary.length * 3);
+  for (let i = 0; i < boundary.length; i++) {
+    const lin = oklchToLinearSrgb(L, boundary[i], (i * 360) / boundary.length);
+    out[i * 3] = GAMMA_LUT[(clamp01(lin[0]) * 4096) | 0];
+    out[i * 3 + 1] = GAMMA_LUT[(clamp01(lin[1]) * 4096) | 0];
+    out[i * 3 + 2] = GAMMA_LUT[(clamp01(lin[2]) * 4096) | 0];
+  }
+  return out;
 }
 
 /**
@@ -283,11 +300,16 @@ export interface SliceOptions {
  */
 export function renderSlice(data: Uint8ClampedArray, opts: SliceOptions): void {
   const { size, radius } = opts;
-  const L = toeInv(clamp01(opts.l));
+  const Lr = clamp01(opts.l);
+  const L = toeInv(Lr);
   const [or, og, ob, oa] = opts.outside ?? [238, 238, 241, 255];
   const [br, bg, bb, ba] = opts.background ?? [0, 0, 0, 0];
+  const ghost = opts.ghostAlpha !== undefined;
+  const ghostA = ghost ? Math.max(0, Math.min(255, Math.round(opts.ghostAlpha as number))) : 0;
+  const edge = ghost ? edgeColours(L, gamutBoundary(Lr, 360)) : null;
   const c = size / 2;
   const eps = GAMUT_EPS;
+  const RAD2DEG = 180 / Math.PI;
   for (let y = 0; y < size; y++) {
     const dy = y + 0.5 - c;
     for (let x = 0; x < size; x++) {
@@ -316,10 +338,21 @@ export function renderSlice(data: Uint8ClampedArray, opts: SliceOptions): void {
       const G = -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3;
       const B = -0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3;
       if (R < -eps || R > 1 + eps || G < -eps || G > 1 + eps || B < -eps || B > 1 + eps) {
-        data[idx] = or;
-        data[idx + 1] = og;
-        data[idx + 2] = ob;
-        data[idx + 3] = oa;
+        if (edge) {
+          // hue from the top, clockwise, to the nearest degree
+          let deg = Math.round(Math.atan2(dx, -dy) * RAD2DEG);
+          if (deg < 0) deg += 360;
+          const e = (deg % 360) * 3;
+          data[idx] = edge[e];
+          data[idx + 1] = edge[e + 1];
+          data[idx + 2] = edge[e + 2];
+          data[idx + 3] = ghostA;
+        } else {
+          data[idx] = or;
+          data[idx + 1] = og;
+          data[idx + 2] = ob;
+          data[idx + 3] = oa;
+        }
         continue;
       }
       data[idx] = GAMMA_LUT[(clamp01(R) * 4096) | 0];

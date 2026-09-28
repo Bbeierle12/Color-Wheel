@@ -175,6 +175,28 @@ describe('renderSlice', () => {
   });
 });
 
+describe('renderSlice ghost mode', () => {
+  it('paints out-of-gamut pixels with the edge colour of their hue at the given alpha', () => {
+    const size = 64;
+    const data = new Uint8ClampedArray(size * size * 4);
+    renderSlice(data, { size, radius: 30, l: 0.5, ghostAlpha: 90 });
+    const px = (x: number, y: number) => Array.from(data.slice((y * size + x) * 4, (y * size + x) * 4 + 4));
+    // rim at the top (hue 0) is out of gamut → edge colour at hue 0, alpha 90
+    const top = px(32, 3);
+    expect(top[3]).toBe(90);
+    const edge = vividAt(0, 0.5);
+    expect(Math.abs(top[0] - edge.r)).toBeLessThanOrEqual(2);
+    expect(Math.abs(top[1] - edge.g)).toBeLessThanOrEqual(2);
+    expect(Math.abs(top[2] - edge.b)).toBeLessThanOrEqual(2);
+    // rim at the right (hue 90): a different edge colour, same alpha
+    const right = px(61, 32);
+    expect(right[3]).toBe(90);
+    expect(right).not.toEqual(top);
+    // inside the gamut is still opaque real colour
+    expect(px(32, 32)[3]).toBe(255);
+  });
+});
+
 describe('lightnessRamp', () => {
   it('runs from black to white at the given hue', () => {
     const ramp = lightnessRamp(29, 0.8, 9);

@@ -68,7 +68,7 @@ interface UseColorWheelReturn {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   stageRef: React.RefObject<HTMLDivElement | null>;
 
-  /** Colour under the pointer, or null when the pointer is off the wheel or outside the gamut. */
+  /** Colour under the pointer (the gamut-edge colour over the ghost region), or null off the wheel. */
   sample: Sample | null;
   /** Full readout for the active handle. */
   activeSample: Sample;
@@ -202,9 +202,9 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
       if (ptOff.x < 0 || ptOff.y < 0 || ptOff.x >= OFF_SIZE || ptOff.y >= OFF_SIZE) return null;
       const pol = offToPolar(ptOff.x, ptOff.y);
       if (!pol.inside) return null;
+      // Outside the gamut the ghost shows the edge colour; report that colour at the edge's chroma.
       const c = coordToRgb({ theta: pol.theta, f: pol.f, l: lightness });
-      if (c.mapped) return null; // grey area: no screen colour here
-      return buildSample(c.rgb, { theta: pol.theta, f: pol.f, l: lightness }, true, ptCanvas, ptOff);
+      return buildSample(c.rgb, { theta: pol.theta, f: c.fEffective, l: lightness }, true, ptCanvas, ptOff);
     },
     [canvasToOff, lightness],
   );
