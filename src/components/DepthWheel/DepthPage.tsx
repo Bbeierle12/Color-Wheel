@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useChromaSettings } from '../../hooks/useChromaSettings';
+import { useChromaSettings, WHEEL_LIGHTNESS_RANGE } from '../../hooks/useChromaSettings';
 import { useScheme } from '../../hooks/useScheme';
 import { applyDrag, referenceHandleId, snapTheta } from '../../lib/selectors';
 import { SelectorControls } from '../Selectors/SelectorControls';
@@ -36,7 +36,9 @@ export function DepthPage() {
   const [test, setTest] = useState<'scheme' | 'sent' | null>(null);
   const dragRef = useRef<string | null>(null);
 
-  const handles = useMemo(() => resolveDepthHandles(scheme, s.wheelSaturation), [scheme, s.wheelSaturation]);
+  const handles = useMemo(() => resolveDepthHandles(scheme, s.wheelSaturation, s.wheelLightness), [scheme, s.wheelSaturation, s.wheelLightness]);
+  const uniform = s.wheelLightness !== null;
+  const lightnessValue = s.wheelLightness ?? 0.6;
   const activeId = handles.some((h) => h.id === activeDepth) ? (activeDepth as string) : handles[0].id;
   const reference = handles.find((h) => h.id === referenceHandleId(scheme)) ?? handles[0];
   const background = scheme.type === 'roles' ? handles.find((h) => h.role === 'background') : undefined;
@@ -86,7 +88,7 @@ export function DepthPage() {
 
         <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-6 items-start">
           <div className="space-y-4">
-            <DepthWheel saturation={s.wheelSaturation} handles={handles} activeId={activeId} onPointerStart={onPointerStart} onPointerDrag={onPointerDrag} onPointerEnd={onPointerEnd} />
+            <DepthWheel saturation={s.wheelSaturation} lightness={s.wheelLightness} handles={handles} activeId={activeId} onPointerStart={onPointerStart} onPointerDrag={onPointerDrag} onPointerEnd={onPointerEnd} />
             <p className="text-center text-[12px] text-zinc-400">
               Tap to place the base; drag a handle to shape the scheme. Look at the wheel on a dark screen at arm's length: do some sectors seem to float above others?
             </p>
@@ -161,7 +163,42 @@ export function DepthPage() {
                 value={s.wheelSaturation}
                 onChange={(e) => update({ wheelSaturation: parseInt(e.target.value, 10) })}
               />
-              <p className="text-[11px] text-zinc-400 mt-1.5">Redraws the wheel's actual colours. Lower saturation mixes in more of every primary, which shrinks the effect.</p>
+              <p className="text-[11px] text-zinc-400 mt-1.5">Percent of the most chromatic colour each sector can show. Lower saturation mixes in more of every primary, which shrinks the effect.</p>
+            </div>
+
+            <div className="mt-5">
+              <div className="flex justify-between items-center mb-2 gap-2 flex-wrap">
+                <label htmlFor="wheelLight" className="text-sm text-zinc-300">
+                  Wheel lightness
+                </label>
+                <span className="text-xs font-mono text-violet-300">{uniform ? `L ${lightnessValue.toFixed(2)}` : 'each hue at its cusp'}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-1.5 text-xs text-zinc-300 shrink-0">
+                  <input
+                    type="checkbox"
+                    className="accent-violet-500"
+                    checked={uniform}
+                    onChange={(e) => update({ wheelLightness: e.target.checked ? lightnessValue : null })}
+                    aria-label="Uniform lightness"
+                  />
+                  Uniform
+                </label>
+                <input
+                  id="wheelLight"
+                  type="range"
+                  className="w-full accent-violet-500 min-w-0"
+                  min={WHEEL_LIGHTNESS_RANGE.min}
+                  max={WHEEL_LIGHTNESS_RANGE.max}
+                  step={0.01}
+                  value={lightnessValue}
+                  disabled={!uniform}
+                  onChange={(e) => update({ wheelLightness: parseFloat(e.target.value) })}
+                />
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1.5">
+                Off: every sector at the lightness where its hue is most colourful (yellow light, blue dark), the strongest stimulus. On: one lightness for the whole wheel, so you can see how darker or paler versions behave; chroma is whatever sRGB has left at that lightness.
+              </p>
             </div>
 
             {showModel && (

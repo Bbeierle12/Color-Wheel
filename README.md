@@ -1,20 +1,26 @@
 # Procedural Interactive Color Wheel
 
-An artist-friendly color wheel built with React, TypeScript, and Canvas. Features procedural color generation, harmony overlays, and a palette builder with CSS export.
+An artist-friendly colour wheel built with React, TypeScript, and Canvas. The wheel is a slice of the OKLCH colour solid — hue by angle, absolute chroma by radius, a lightness slider for the third axis — with scheme selectors, a scheme library, a palette builder with CSS export, and a chromostereopsis (depth) tab.
 
 ![Color Wheel Preview](https://via.placeholder.com/800x400?text=Color+Wheel+Preview)
 
 ## Features
 
-- **Procedural Wheel**: No images - colors are generated mathematically with hue mapped to angle and tint/shade variations across the radius
-- **Scheme selectors**: Complementary, split complementary, analogous, triadic, tetradic, monochrome, free (up to six) and roles (background, surface, text, primary, accent). Handles are drawn on the wheel: tap to place the base, drag the base to rotate the whole scheme, drag a derived handle to change that selector's parameter (spread, spacing, rectangle offset), and drag freely on Free/Roles.
+- **OKLCH wheel**: The disc is a slice of the sRGB colour solid in OKLCH at one lightness: angle is OKLCH hue, radius is absolute chroma (the same radius is the same colourfulness at every lightness), the centre is the grey of that lightness. The gamut edge is drawn; the grey region outside it is where sRGB has no colour at that lightness. A vertical strip beside the wheel sets the active handle's lightness and shows the hue from black to white, so you can see where each hue is most colourful (yellow near the top, blue near the bottom). Browns, olives, navies and every other dark or muted colour are reachable. Handles store the intended colour; one that asks for more chroma than the screen has sits on the gamut edge and comes back when the lightness allows it.
+- **Scheme selectors**: Complementary, split complementary, analogous, triadic, tetradic, monochrome (one hue from dark to light), free (up to six) and roles (background, surface, text, primary, accent). Handles are drawn on the wheel: tap to place the base, drag the base to rotate the whole scheme, drag a derived handle to change that selector's parameter (spread, spacing, rectangle offset), and drag freely on Free/Roles. Template selectors share the base's lightness and chroma (true OKLCH harmonies); Free and Roles carry lightness per handle, and handles on another lightness are drawn ghosted until selected.
 - **Palette Builder**: Capture swatches or a whole scheme from the wheel and export as CSS custom properties, named by role (`--background`, `--accent`) when the scheme has roles
 - **Scheme library**: Save schemes with their structure (selector, base, parameters, roles), not just their colours. A Library tab lists them with swatches, a mock UI preview for role schemes, a live chromostereopsis verdict, search, filters and sort; load any entry back onto the artist wheel (handles restored), to the Depth tab, or into the palette. Five built-in starters. Export/import the library as JSON. Stored in the browser; combos saved by earlier versions are migrated automatically.
 - **Artist-Friendly Descriptors**: Hue family names, warm/cool temperature, value and chroma proxies
 - **Technical Color Data**: Full color space conversions including HSL, HSV, HWB, CMYK, XYZ, Lab, LCH, OKLab, OKLCH
 - **Accessibility**: WCAG contrast ratios against white and black backgrounds
 - **Tints & Shades**: Generate digital blends from any sampled color
-- **Depth tab (chromostereopsis)**: A second wheel of saturated sectors on black with the same selectors, snapped to sectors. The app predicts which colours of the scheme will appear nearer, and by how much, from the eye's chromatic aberration. Includes a full-screen test view with observer calibration and an adjustable eye model. "Send to Depth" carries the artist wheel's scheme over for analysis; the sidebar and palette rank pairs by predicted depth using the same eye model.
+- **Depth tab (chromostereopsis)**: A second wheel of 36 OKLCH-hue sectors on black with the same selectors, snapped to sectors. By default each sector is shown at its hue's cusp, the lightness where it is most colourful; a wheel-wide lightness slider shows every hue at one lightness instead, with whatever chroma sRGB has left there. The app predicts which colours of the scheme will appear nearer, and by how much, from the eye's chromatic aberration. Includes a full-screen test view with observer calibration and an adjustable eye model. "Send to Depth" carries the artist wheel's scheme over for analysis; the sidebar and palette rank pairs by predicted depth using the same eye model.
+
+## Colour model
+
+`src/lib/oklch/` holds the conversions (sRGB ⇄ OKLab ⇄ OKLCH), the Okhsl lightness toe (so the slider's midpoint is mid grey), the sRGB gamut boundary by bisection, chroma-reducing gamut mapping (CSS Color 4 style: hue and lightness kept), and the slice renderer. Wheel coordinates are `(theta, f, l)`: OKLCH hue, chroma / 0.33, toe lightness. OKLab is used for placement because its hue lines are straight and it is native to CSS; it is a poor predictor of colour *differences* (STRESS ≈ 47 on COMBVD vs 29 for CIEDE2000), so it is not used as a distance metric. One known artefact: the sRGB gamut is slightly non-convex at the blue vertex in OKLab, so the boundary curve stops a little short of pure blue on that one ray.
+
+Positions saved by earlier versions (HSL hue, tint radius) are converted on load by resolving the colour each old handle showed and re-encoding it, so saved colours are unchanged; derived handles of template schemes are re-derived in OKLCH hue.
 
 ## Chromostereopsis model
 
@@ -66,20 +72,21 @@ src/
 ├── components/
 │   ├── ColorWheel/
 │   │   ├── ColorWheel.tsx      # Main component
+│   │   ├── LightnessStrip.tsx  # Vertical lightness control beside the wheel
 │   │   ├── Sidebar.tsx         # Control panel
 │   │   ├── SwatchDisplay.tsx   # Color swatch preview
 │   │   ├── PaletteManager.tsx  # Palette builder UI
 │   │   └── index.ts            # Exports
-│   └── DepthWheel/
-│       ├── DepthPage.tsx       # Chromostereopsis tab
-│       ├── DepthWheel.tsx      # Sectored wheel on black, A/B selection
-│       ├── DepthChart.tsx      # Depth of every sector relative to B
-│       ├── PairReadout.tsx     # Numbers for the selected pair
-│       ├── EyeModelPanel.tsx   # Pupil, SCE, distance, IPD, display, calibration
-│       ├── TestView.tsx        # Full-screen stimulus + observer calibration
-│       ├── SampleDepth.tsx     # Depth rows in the artist wheel sidebar
-│       ├── PaletteDepth.tsx    # Ranked pairs in the palette manager
-│       └── ChromaSettingsProvider.tsx
+│   ├── DepthWheel/
+│   │   ├── DepthPage.tsx       # Chromostereopsis tab
+│   │   ├── DepthWheel.tsx      # Sectored wheel on black with scheme handles
+│   │   ├── depthWheelModel.ts  # Sector hues/colours (cusp or uniform lightness)
+│   │   ├── DepthChart.tsx      # Depth of every sector relative to the reference
+│   │   ├── EyeModelPanel.tsx   # Pupil, SCE, distance, IPD, display, calibration
+│   │   ├── TestView.tsx        # Full-screen stimulus + observer calibration
+│   │   ├── PairDepthList.tsx   # Ranked pairs (sidebar, depth page, library cards)
+│   │   ├── PaletteDepth.tsx    # Ranked pairs in the palette manager
+│   │   └── ChromaSettingsProvider.tsx
 │   ├── Selectors/
 │   │   ├── SelectorControls.tsx # Selector picker + parameters (both wheels)
 │   │   └── HandleList.tsx      # Handles as selectable rows
@@ -99,8 +106,10 @@ src/
 │   ├── useSchemeLoader.ts      # Load an entry to a wheel / palette; save from a wheel
 │   └── useChromaSettings.ts    # Shared eye model + calibration (localStorage)
 ├── lib/
-│   ├── selectors/              # Scheme selectors: resolve handles, apply drags
+│   ├── oklch/                  # OKLCH model: conversions, toe, gamut boundary, slice renderer
+│   ├── selectors/              # Scheme selectors: resolve handles, apply drags, lightness
 │   ├── library/                # Saved-scheme format, sanitising, export/import, starters
+│   ├── migrate/                # HSL-era positions → OKLCH coordinates
 │   └── chromostereopsis/       # Pure physics + colour model
 ├── utils/
 │   ├── colorMath.ts            # Math utilities

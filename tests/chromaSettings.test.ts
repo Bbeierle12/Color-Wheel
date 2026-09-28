@@ -8,6 +8,7 @@ import {
   sanitizeChromaSettings,
 } from '../src/hooks/useChromaSettings';
 import { fmtCm, sectorAt, sectorHex } from '../src/components/DepthWheel/depthWheelModel';
+import { parseHex, rgbToOklch, toe } from '../src/lib/oklch';
 
 describe('sanitizeChromaSettings', () => {
   it('returns defaults for null, junk and wrong shapes', () => {
@@ -74,10 +75,28 @@ describe('depth wheel helpers', () => {
     expect(sectorAt(0, -200, 30, 100)).toBeNull();
   });
 
-  it('sectorHex produces the pure primaries at full saturation', () => {
-    expect(sectorHex(0, 100)).toBe('#ff0000');
-    expect(sectorHex(12, 100)).toBe('#00ff00');
-    expect(sectorHex(24, 100)).toBe('#0000ff');
+  it('sectorHex: at the cusp every sector is the most chromatic sRGB colour of its hue', () => {
+    // sector 2 spans 20–30°, centre 25°: near sRGB red (29.2°) and just as vivid
+    const red = parseHex(sectorHex(2, 100, null))!;
+    expect(red.r).toBe(255);
+    expect(red.g + red.b).toBeLessThan(60);
+    // sector 26 (265°) is blue at its own dark cusp
+    const blue = parseHex(sectorHex(26, 100, null))!;
+    expect(blue.b).toBe(255);
+    expect(blue.r + blue.g).toBeLessThan(80);
+    // uniform lightness: the blue sector at Lr 0.9 becomes a pale, low-chroma blue
+    const pale = rgbToOklch(parseHex(sectorHex(26, 100, 0.9))!);
+    expect(pale.C).toBeLessThan(0.08);
+    expect(toe(pale.L)).toBeCloseTo(0.9, 1);
+    // saturation 0 is the grey of that lightness
+    const grey = parseHex(sectorHex(2, 0, 0.5))!;
+    expect(Math.abs(grey.r - grey.b)).toBeLessThanOrEqual(1);
+  });
+
+  it('wheelLightness accepts null (cusp) or a value in range', () => {
+    expect(sanitizeChromaSettings({ wheelLightness: 0.4 }).wheelLightness).toBe(0.4);
+    expect(sanitizeChromaSettings({ wheelLightness: 2 }).wheelLightness).toBeNull();
+    expect(sanitizeChromaSettings({ wheelLightness: null }).wheelLightness).toBeNull();
   });
 
   it('fmtCm never prints negative zero and handles infinities', () => {

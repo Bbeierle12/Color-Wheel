@@ -4,8 +4,12 @@
  * the artist wheel (continuous hue + tint) and the depth wheel (sector-snapped)
  * render the same selector types.
  *
- * Positions are polar: theta in degrees (0 at top, clockwise), f in 0..1 from
- * the inner edge of the colour ring to the outer edge. The depth wheel ignores f.
+ * Positions are OKLCH wheel coordinates (see src/lib/oklch): theta is the OKLCH
+ * hue in degrees (0 at top, clockwise), f the chroma as a fraction of the rim,
+ * l the toe lightness. Template selectors derive their handles from the base
+ * by rotating hue at the base's chroma and lightness; Free and Roles carry all
+ * three per handle. The depth wheel ignores f and l (its lightness is a wheel
+ * setting) and snaps theta to sectors.
  */
 
 import { degNorm } from '../../utils/colorMath';
@@ -28,7 +32,7 @@ export const SELECTOR_TYPES: { id: SelectorType; label: string; description: str
   { id: 'analogous', label: 'Analogous', description: 'Base plus neighbours; drag to set the spacing' },
   { id: 'triadic', label: 'Triadic', description: 'Three colours 120° apart' },
   { id: 'tetradic', label: 'Tetradic', description: 'Two complementary pairs; drag to set the rectangle (90° = square)' },
-  { id: 'monochrome', label: 'Monochrome', description: 'One hue, several tints along the radius' },
+  { id: 'monochrome', label: 'Monochrome', description: 'One hue from dark to light' },
   { id: 'free', label: 'Free', description: 'Up to six independent colours' },
   { id: 'roles', label: 'Roles', description: 'Background, surface, text, primary, accent' },
 ];
@@ -47,9 +51,24 @@ export const ROLE_LABELS: Record<RoleId, string> = {
 };
 
 export interface Polar {
+  /** OKLCH hue, degrees. */
+  theta: number;
+  /** Chroma as a fraction of the wheel rim (C / 0.33). */
+  f: number;
+  /** Toe lightness 0..1. */
+  l: number;
+}
+
+/** A pointer position on the wheel: hue and chroma; lightness optional (kept from the handle). */
+export interface DragPos {
   theta: number;
   f: number;
+  l?: number;
 }
+
+/** sRGB red in wheel coordinates; the default base. */
+export const DEFAULT_BASE: Polar = Object.freeze({ theta: 29.2, f: 0.78, l: 0.568 }) as Polar;
+export const DEFAULT_L = DEFAULT_BASE.l;
 
 export interface SelectorParams {
   /** Split: angle either side of the complement. Analogous: spacing between neighbours. Degrees. */
@@ -95,12 +114,15 @@ export function signedAngle(a: number, b: number): number {
   const d = degNorm(a - b);
   return d > 180 ? d - 360 : d;
 }
-const polar = (theta: number, f: number): Polar => ({ theta: degNorm(theta), f: clamp01(f) });
+const polar = (theta: number, f: number, l: number): Polar => ({ theta: degNorm(theta), f: clamp01(f), l: clamp01(l) });
 const LETTERS = 'ABCDEF';
 
-export function defaultScheme(type: SelectorType = 'complementary', base: Polar = { theta: 0, f: 1 }): SchemeState {
-  return setType({ type: 'single', base: polar(base.theta, base.f), params: { ...DEFAULT_PARAMS }, free: [] }, type);
+export function defaultScheme(type: SelectorType = 'complementary', base: Polar = DEFAULT_BASE): SchemeState {
+  return setType({ type: 'single', base: polar(base.theta, base.f, base.l), params: { ...DEFAULT_PARAMS }, free: [] }, type);
 }
+
+/** Monochrome: derived handles spread from dark to light around the base's hue. */
+export const MONO_L_RANGE = { min: 0.18, max: 0.94 } as const;
 
 // ---------------------------------------------------------------------------
 // Resolve
@@ -110,38 +132,39 @@ function templateHandles(s: SchemeState): { id: string; pos: Polar }[] {
   const { base, params } = s;
   const t = base.theta;
   const f = base.f;
+  const l = base.l;
   switch (s.type) {
     case 'single':
       return [{ id: 'base', pos: base }];
     case 'complementary':
-      return [{ id: 'base', pos: base }, { id: 'comp', pos: polar(t + 180, f) }];
+      return [{ id: 'base', pos: base }, { id: 'comp', pos: polar(t + 180, f, l) }];
     case 'split': {
       const sp = clamp(params.spread, PARAM_LIMITS.splitSpread.min, PARAM_LIMITS.splitSpread.max);
-      return [{ id: 'base', pos: base }, { id: 'split1', pos: polar(t + 180 - sp, f) }, { id: 'split2', pos: polar(t + 180 + sp, f) }];
+      return [{ id: 'base', pos: base }, { id: 'split1', pos: polar(t + 180 - sp, f, l) }, { id: 'split2', pos: polar(t + 180 + sp, f, l) }];
     }
     case 'analogous': {
       const sp = clamp(params.spread, PARAM_LIMITS.analogousSpread.min, PARAM_LIMITS.analogousSpread.max);
       const n = params.count >= 5 ? 2 : 1;
       const out = [{ id: 'base', pos: base }];
-      for (let k = 1; k <= n; k++) out.push({ id: `ana-${k}`, pos: polar(t - k * sp, f) }, { id: `ana+${k}`, pos: polar(t + k * sp, f) });
+      for (let k = 1; k <= n; k++) out.push({ id: `ana-${k}`, pos: polar(t - k * sp, f, l) }, { id: `ana+${k}`, pos: polar(t + k * sp, f, l) });
       return out;
     }
     case 'triadic':
-      return [{ id: 'base', pos: base }, { id: 'tri2', pos: polar(t + 120, f) }, { id: 'tri3', pos: polar(t + 240, f) }];
+      return [{ id: 'base', pos: base }, { id: 'tri2', pos: polar(t + 120, f, l) }, { id: 'tri3', pos: polar(t + 240, f, l) }];
     case 'tetradic': {
       const off = clamp(params.offset, PARAM_LIMITS.offset.min, PARAM_LIMITS.offset.max);
       return [
         { id: 'base', pos: base },
-        { id: 'tet2', pos: polar(t + off, f) },
-        { id: 'tet3', pos: polar(t + 180, f) },
-        { id: 'tet4', pos: polar(t + 180 + off, f) },
+        { id: 'tet2', pos: polar(t + off, f, l) },
+        { id: 'tet3', pos: polar(t + 180, f, l) },
+        { id: 'tet4', pos: polar(t + 180 + off, f, l) },
       ];
     }
     case 'monochrome': {
+      // The base keeps its own lightness; the others step from dark to light at the base's chroma.
       const n = clamp(Math.round(params.count), PARAM_LIMITS.monochromeCount.min, PARAM_LIMITS.monochromeCount.max);
-      const fMin = 0.2;
-      const out = [{ id: 'base', pos: polar(t, 1) }];
-      for (let i = 1; i < n; i++) out.push({ id: `mono${i}`, pos: polar(t, 1 - (i * (1 - fMin)) / (n - 1)) });
+      const out = [{ id: 'base', pos: base }];
+      for (let i = 1; i < n; i++) out.push({ id: `mono${i}`, pos: polar(t, f, MONO_L_RANGE.min + ((MONO_L_RANGE.max - MONO_L_RANGE.min) * (i - 1)) / Math.max(1, n - 2)) });
       return out;
     }
     case 'free':
@@ -179,19 +202,19 @@ export function referenceHandleId(s: SchemeState): string {
  * templates, the scheme rotates so that handle lands there). Free/roles → only
  * that handle moves. Unknown ids leave the state unchanged.
  */
-export function applyDrag(s: SchemeState, handleId: string, pos: Polar): SchemeState {
-  const p = polar(pos.theta, pos.f);
-  const withBase = (theta: number, f = p.f): SchemeState => ({ ...s, base: polar(theta, f) });
-  const withParams = (patch: Partial<SelectorParams>, f = p.f): SchemeState => ({ ...s, base: polar(s.base.theta, f), params: { ...s.params, ...patch } });
-
+export function applyDrag(s: SchemeState, handleId: string, pos: DragPos): SchemeState {
   if (s.type === 'free' || s.type === 'roles') {
     const idx = s.type === 'free' ? Number(handleId.replace(/^h/, '')) - 1 : ROLE_IDS.indexOf(handleId as RoleId);
     if (!Number.isInteger(idx) || idx < 0 || idx >= s.free.length) return s;
     const free = s.free.slice();
-    free[idx] = p;
+    free[idx] = polar(pos.theta, pos.f, pos.l ?? s.free[idx].l);
     return { ...s, free };
   }
-  if (handleId === 'base') return s.type === 'monochrome' ? withBase(p.theta, s.base.f) : withBase(p.theta);
+  const p = polar(pos.theta, pos.f, pos.l ?? s.base.l);
+  const withBase = (theta: number, f = p.f): SchemeState => ({ ...s, base: polar(theta, f, p.l) });
+  const withParams = (patch: Partial<SelectorParams>, f = p.f): SchemeState => ({ ...s, base: polar(s.base.theta, f, p.l), params: { ...s.params, ...patch } });
+
+  if (handleId === 'base') return withBase(p.theta);
 
   const t = s.base.theta;
   switch (s.type) {
@@ -218,10 +241,32 @@ export function applyDrag(s: SchemeState, handleId: string, pos: Polar): SchemeS
       if (handleId === 'tet4') return withParams({ offset: clamp(degNorm(p.theta - t - 180), PARAM_LIMITS.offset.min, PARAM_LIMITS.offset.max) });
       return s;
     case 'monochrome':
-      return /^mono\d$/.test(handleId) ? withBase(p.theta, s.base.f) : s;
+      // Dragging a shade rotates the hue and sets the shared chroma; its lightness is fixed by its rank.
+      return /^mono\d$/.test(handleId) ? { ...s, base: polar(p.theta, p.f, s.base.l) } : s;
     default:
       return s;
   }
+}
+
+/**
+ * Set a handle's lightness. Template selectors share one lightness, so any
+ * handle id sets the base's; Free/Roles set only that handle's.
+ */
+export function setLightness(s: SchemeState, handleId: string, l: number): SchemeState {
+  if (s.type === 'free' || s.type === 'roles') {
+    const idx = s.type === 'free' ? Number(handleId.replace(/^h/, '')) - 1 : ROLE_IDS.indexOf(handleId as RoleId);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= s.free.length) return s;
+    const free = s.free.slice();
+    free[idx] = polar(free[idx].theta, free[idx].f, l);
+    return { ...s, free };
+  }
+  return { ...s, base: polar(s.base.theta, s.base.f, l) };
+}
+
+/** The lightness a handle is drawn at (its own on Free/Roles, the base's otherwise). */
+export function handleLightness(s: SchemeState, handleId: string): number {
+  const h = resolveHandles(s).find((x) => x.id === handleId);
+  return h ? h.pos.l : s.base.l;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,11 +284,12 @@ export function setType(s: SchemeState, type: SelectorType): SchemeState {
   let free: Polar[] = [];
   if (type === 'free') {
     free = current.slice(0, PARAM_LIMITS.freeHandles.max);
-    if (free.length < PARAM_LIMITS.freeHandles.min) free = [s.base, polar(s.base.theta + 180, s.base.f)];
+    if (free.length < PARAM_LIMITS.freeHandles.min) free = [s.base, polar(s.base.theta + 180, s.base.f, s.base.l)];
   } else if (type === 'roles') {
-    const t = s.base.theta;
-    const f = s.base.f;
-    free = [polar(t, 0.06), polar(t, 0.18), polar(t + 180, 1), polar(t, f), polar(t + 150, f)];
+    // Background: a near-white tint of the base hue; surface a little deeper; text a dark
+    // shade of the complement; primary the base itself; accent 150° round at the same depth.
+    const { theta: t, f, l } = s.base;
+    free = [polar(t, 0.06, 0.97), polar(t, 0.1, 0.92), polar(t + 180, 0.25, 0.22), polar(t, f, l), polar(t + 150, f, l)];
     if (s.type === 'free' && s.free.length >= ROLE_IDS.length) free = s.free.slice(0, ROLE_IDS.length);
   }
   return { ...s, type, params, free };
@@ -264,7 +310,7 @@ export function setParams(s: SchemeState, patch: Partial<SelectorParams>): Schem
 export function addFreeHandle(s: SchemeState): SchemeState {
   if (s.type !== 'free' || s.free.length >= PARAM_LIMITS.freeHandles.max) return s;
   const last = s.free[s.free.length - 1] ?? s.base;
-  return { ...s, free: [...s.free, polar(last.theta + 60, last.f)] };
+  return { ...s, free: [...s.free, polar(last.theta + 60, last.f, last.l)] };
 }
 
 export function removeFreeHandle(s: SchemeState, handleId: string): SchemeState {
@@ -292,9 +338,11 @@ export function snapTheta(theta: number, sectors: number): number {
 // ---------------------------------------------------------------------------
 
 const isType = (v: unknown): v is SelectorType => SELECTOR_TYPES.some((t) => t.id === v);
-const isPolar = (v: unknown): v is Polar =>
+/** theta and f required; a missing l is a pre-lightness (v1) position and gets the default. */
+const isPolar = (v: unknown): v is DragPos =>
   !!v && typeof v === 'object' && Number.isFinite((v as Polar).theta) && Number.isFinite((v as Polar).f);
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const fromRaw = (q: DragPos): Polar => polar(q.theta, q.f, num(q.l, DEFAULT_L));
 
 /** Accepts any JSON value; returns a valid scheme or the fallback. */
 export function sanitizeScheme(raw: unknown, fallback: SchemeState): SchemeState {
@@ -304,9 +352,9 @@ export function sanitizeScheme(raw: unknown, fallback: SchemeState): SchemeState
   const p = (r.params ?? {}) as Record<string, unknown>;
   let s: SchemeState = {
     type: r.type,
-    base: polar(r.base.theta, r.base.f),
+    base: fromRaw(r.base),
     params: { spread: num(p.spread, DEFAULT_PARAMS.spread), count: num(p.count, DEFAULT_PARAMS.count), offset: num(p.offset, DEFAULT_PARAMS.offset) },
-    free: Array.isArray(r.free) ? r.free.filter(isPolar).map((q) => polar(q.theta, q.f)) : [],
+    free: Array.isArray(r.free) ? r.free.filter(isPolar).map(fromRaw) : [],
   };
   s = setParams(s, {});
   if (s.type === 'roles' && s.free.length !== ROLE_IDS.length) return setType({ ...s, type: 'single', free: [] }, 'roles');

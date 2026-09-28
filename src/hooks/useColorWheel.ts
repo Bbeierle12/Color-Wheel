@@ -1,13 +1,15 @@
 /**
  * Custom hook for the artist colour wheel: canvas, pointer interaction, scheme
- * handles, and sampling.
+ * handles, lightness, and sampling.
  *
- * Selection is a scheme (see src/lib/selectors): a set of handles tied to a base
- * by the chosen selector. Tap the wheel to move the base (or the active handle on
- * Free/Roles); drag a handle to adjust the scheme; hover to read any colour.
+ * The wheel is an OKLCH slice at the active handle's lightness (see
+ * src/lib/oklch). Selection is a scheme (src/lib/selectors): tap the wheel to
+ * move the base (or the active handle on Free/Roles); drag a handle to adjust
+ * the scheme; hover to read any colour. Handles on another lightness are drawn
+ * ghosted at their projection; selecting one re-slices the wheel.
  *
  * Separated concerns:
- * - Canvas lifecycle & bitmap (one-time init, resize observer)
+ * - Canvas lifecycle & bitmap (re-rendered per lightness, small preview while sliding)
  * - Pointer events, hit-testing, dragging
  * - Sampling (hover sample and per-handle samples, both procedural)
  * - Palette management (delegated to usePalette)
@@ -16,17 +18,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Sample, Complement, WheelTransform, Point, PaletteSwatch, TintShadeStep, RGB } from '../types';
-import { MODEL, OFF_SIZE } from '../constants/wheelModel';
-import {
-  renderWheelBitmap,
-  drawDecor,
-  drawHandles,
-  polarToOff,
-  offToPolar,
-  wheelColorAtPolar,
-  HANDLE_HIT_PX,
-  type HandleMark,
-} from '../lib/wheelRenderer';
+import { MODEL, OFF_SIZE, OFF_SIZE_PREVIEW } from '../constants/wheelModel';
+import { renderWheelBitmap, drawDecor, drawHandles, coordToOff, offToPolar, HANDLE_HIT_PX, type HandleMark } from '../lib/wheelRenderer';
+import { coordToRgb } from '../lib/oklch';
 import {
   rgbToHex,
   rgbToHsl,
@@ -47,8 +41,8 @@ import {
   cctMcCamyFromXy,
   clamp01,
 } from '../utils';
-import { hueName, temperatureLabel } from '../utils/artistDescriptors';
-import { applyDrag, resolveHandles, type Handle, type Polar, type SchemeState } from '../lib/selectors';
+import { oklchHueName, oklchTemperature } from '../utils/artistDescriptors';
+import { applyDrag, resolveHandles, setLightness, type Handle, type Polar, type SchemeState } from '../lib/selectors';
 import { useScheme, type SentColor } from './useScheme';
 import { usePaletteContext } from './usePaletteContext';
 import { useTintShades } from './useTintShades';
@@ -64,13 +58,17 @@ export interface WheelHandle extends Handle {
   rgb: RGB;
   hex: string;
   active: boolean;
+  /** Intended chroma was outside sRGB; the handle sits on the gamut edge. */
+  mapped: boolean;
+  /** Chroma actually shown, as a wheel fraction. */
+  fEffective: number;
 }
 
 interface UseColorWheelReturn {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   stageRef: React.RefObject<HTMLDivElement | null>;
 
-  /** Colour under the pointer, or null when the pointer is off the wheel. */
+  /** Colour under the pointer, or null when the pointer is off the wheel or outside the gamut. */
   sample: Sample | null;
   /** Full readout for the active handle. */
   activeSample: Sample;
@@ -79,6 +77,10 @@ interface UseColorWheelReturn {
   setActive: (id: string) => void;
   scheme: SchemeState;
   setScheme: (s: SchemeState) => void;
+  /** Lightness of the slice being shown (the active handle's). */
+  lightness: number;
+  /** Set the active handle's lightness; `preview` renders a coarse bitmap for slider drags. */
+  setLightness: (l: number, preview?: boolean) => void;
   stateLabel: string;
 
   palette: PaletteSwatch[];
@@ -99,7 +101,7 @@ interface UseColorWheelReturn {
   onPointerLeave: (e: React.PointerEvent<HTMLCanvasElement>) => void;
 }
 
-/** Full colour readout for an RGB at a wheel position. Complement is the same ring position 180° away. */
+/** Full colour readout for an RGB at a wheel coordinate. Complement is the same chroma and lightness 180° round. */
 function buildSample(rgb: RGB, pol: Polar, inside: boolean, ptCanvas: Point, ptOff: Point): Sample {
   const { r, g, b } = rgb;
   const hex = rgbToHex(r, g, b);
@@ -109,12 +111,12 @@ function buildSample(rgb: RGB, pol: Polar, inside: boolean, ptCanvas: Point, ptO
   const lch = labToLch(lab);
   const oklab = rgbToOklab(r, g, b);
   const relLum = relLuminanceWcagFromY(xyz.Y);
-  const rr = MODEL.R_inner + pol.f * (MODEL.R_color - MODEL.R_inner);
+  const rr = pol.f * MODEL.R_color;
 
   let comp: Complement | undefined;
   if (inside) {
     const compTheta = (pol.theta + 180) % 360;
-    const crgb = wheelColorAtPolar(compTheta, pol.f);
+    const crgb = coordToRgb({ theta: compTheta, f: pol.f, l: pol.l }).rgb;
     const cxyz = rgbToXyzD65(crgb.r, crgb.g, crgb.b);
     const clab = xyzToLabD65(cxyz);
     comp = { theta: compTheta, rgb: crgb, hex: rgbToHex(crgb.r, crgb.g, crgb.b), lab: clab, lch: labToLch(clab), dE76: deltaE76(lab, clab) };
@@ -122,9 +124,9 @@ function buildSample(rgb: RGB, pol: Polar, inside: boolean, ptCanvas: Point, ptO
 
   return {
     xCanvas: ptCanvas.x, yCanvas: ptCanvas.y, xOff: ptOff.x, yOff: ptOff.y,
-    theta: pol.theta, r: rr, f: pol.f, inside,
+    theta: pol.theta, r: rr, f: pol.f, lightness: pol.l, inside,
     rgb: { r, g, b }, hex, cssRgb: `rgb(${r} ${g} ${b})`,
-    hueLabel: hueName(pol.theta), temp: temperatureLabel(pol.theta),
+    hueLabel: oklchHueName(pol.theta), temp: oklchTemperature(pol.theta),
     valueProxy: clamp01(lab.L / 100) * 10, chromaProxy: Math.min(20, lch.C / 8),
     hsl: rgbToHsl(r, g, b), hsv: rgbToHsv(r, g, b), hwb: rgbToHwb(r, g, b), cmyk: rgbToCmyk(r, g, b),
     linRgb: rgbToLinearRgb(r, g, b), xyz, xyY, uvp: xyzToUvPrime(xyz),
@@ -134,6 +136,8 @@ function buildSample(rgb: RGB, pol: Polar, inside: boolean, ptCanvas: Point, ptO
   };
 }
 
+const FULL_RENDER_DELAY_MS = 90;
+
 export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheelReturn {
   const { showDecor = true, showHandles = true, tintSteps = 7 } = options;
   const { artist: scheme, setArtist, activeArtist, setActiveArtist, sendToDepth } = useScheme();
@@ -142,6 +146,12 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const offCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  /** Lightness the full bitmap was last rendered at; NaN before the first render. */
+  const bitmapLRef = useRef<number>(NaN);
+  /** While true the wheel draws the small preview bitmap. */
+  const previewRef = useRef(false);
+  const fullTimerRef = useRef<number | null>(null);
   const tfRef = useRef<WheelTransform>({ scale: 1, dx: 0, dy: 0, dpr: 1, w: 0, h: 0 });
 
   // ── Pointer / interaction state ──────────────────────────────────
@@ -156,12 +166,13 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   const handles = useMemo<WheelHandle[]>(
     () =>
       resolved.map((h) => {
-        const rgb = wheelColorAtPolar(h.pos.theta, h.pos.f);
-        return { ...h, rgb, hex: rgbToHex(rgb.r, rgb.g, rgb.b), active: h.id === activeId };
+        const r = coordToRgb(h.pos);
+        return { ...h, rgb: r.rgb, hex: r.hex, active: h.id === activeId, mapped: r.mapped, fEffective: r.fEffective };
       }),
     [resolved, activeId],
   );
   const activeHandle = handles.find((h) => h.id === activeId) ?? handles[0];
+  const lightness = activeHandle.pos.l;
 
   // ── Extracted hooks ──────────────────────────────────────────────
   const { palette, paletteCss, addSwatch, addSwatches, addTintSwatch, removeSwatch, clearPalette, copyPaletteCss, loadColors } = usePaletteContext();
@@ -182,7 +193,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     const rect = canvas.getBoundingClientRect();
     return { x: (e.clientX - rect.left) * t.dpr, y: (e.clientY - rect.top) * t.dpr };
   }, []);
-  const handleCanvasPos = useCallback((h: Handle): Point => offToCanvas(polarToOff(h.pos.theta, h.pos.f)), [offToCanvas]);
+  const handleCanvasPos = useCallback((h: Handle): Point => offToCanvas(coordToOff(h.pos)), [offToCanvas]);
 
   // ── Sampling ─────────────────────────────────────────────────────
   const sampleAtCanvas = useCallback(
@@ -191,15 +202,32 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
       if (ptOff.x < 0 || ptOff.y < 0 || ptOff.x >= OFF_SIZE || ptOff.y >= OFF_SIZE) return null;
       const pol = offToPolar(ptOff.x, ptOff.y);
       if (!pol.inside) return null;
-      return buildSample(wheelColorAtPolar(pol.theta, pol.f), pol, true, ptCanvas, ptOff);
+      const c = coordToRgb({ theta: pol.theta, f: pol.f, l: lightness });
+      if (c.mapped) return null; // grey area: no screen colour here
+      return buildSample(c.rgb, { theta: pol.theta, f: pol.f, l: lightness }, true, ptCanvas, ptOff);
     },
-    [canvasToOff],
+    [canvasToOff, lightness],
   );
 
   const activeSample = useMemo(() => {
-    const ptOff = polarToOff(activeHandle.pos.theta, activeHandle.pos.f);
-    return buildSample(activeHandle.rgb, activeHandle.pos, true, offToCanvas(ptOff), ptOff);
+    const ptOff = coordToOff(activeHandle.pos);
+    return buildSample(activeHandle.rgb, { ...activeHandle.pos, f: activeHandle.fEffective }, true, offToCanvas(ptOff), ptOff);
   }, [activeHandle, offToCanvas]);
+
+  // ── Bitmap ───────────────────────────────────────────────────────
+  const renderFull = useCallback((l: number) => {
+    const off = offCanvasRef.current;
+    const ctx = off?.getContext('2d');
+    if (!off || !ctx) return;
+    renderWheelBitmap(ctx, l, OFF_SIZE);
+    bitmapLRef.current = l;
+  }, []);
+  const renderPreview = useCallback((l: number) => {
+    const pv = previewCanvasRef.current;
+    const ctx = pv?.getContext('2d');
+    if (!pv || !ctx) return;
+    renderWheelBitmap(ctx, l, OFF_SIZE_PREVIEW);
+  }, []);
 
   // ── Drawing (uses a ref so effects don't re-fire the bitmap init) ─
   const drawRef = useRef<() => void>(() => {});
@@ -216,14 +244,15 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(off, t.dx, t.dy, t.w, t.h);
+    const src = previewRef.current && previewCanvasRef.current ? previewCanvasRef.current : off;
+    ctx.drawImage(src, t.dx, t.dy, t.w, t.h);
 
     const centerC = offToCanvas({ x: MODEL.cx, y: MODEL.cy });
-    if (showDecor) drawDecor(ctx, t, centerC);
+    if (showDecor) drawDecor(ctx, t, centerC, lightness);
     if (showHandles) {
       const marks: HandleMark[] = handles.map((h) => {
         const p = handleCanvasPos(h);
-        return { id: h.id, label: h.label, x: p.x, y: p.y, hex: h.hex, isBase: h.isBase, active: h.active };
+        return { id: h.id, label: h.label, x: p.x, y: p.y, hex: h.hex, isBase: h.isBase, active: h.active, ghost: Math.abs(h.pos.l - lightness) > 0.002, mapped: h.mapped };
       });
       drawHandles(ctx, t, centerC, marks, dragging ? null : pointerPt);
     }
@@ -249,20 +278,43 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     drawRef.current();
   }, []);
 
-  // ── One-time bitmap initialisation ───────────────────────────────
+  // ── One-time canvas initialisation ───────────────────────────────
   useEffect(() => {
     const off = document.createElement('canvas');
     off.width = OFF_SIZE;
     off.height = OFF_SIZE;
-    const ctx = off.getContext('2d');
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = true;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, OFF_SIZE, OFF_SIZE);
-    renderWheelBitmap(ctx);
+    const pv = document.createElement('canvas');
+    pv.width = OFF_SIZE_PREVIEW;
+    pv.height = OFF_SIZE_PREVIEW;
+    if (!off.getContext('2d')) return;
     offCanvasRef.current = off;
+    previewCanvasRef.current = pv;
+    renderFull(lightness);
     resize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Re-slice when the lightness changes ──────────────────────────
+  useEffect(() => {
+    if (!offCanvasRef.current) return;
+    if (previewRef.current) {
+      renderPreview(lightness);
+      schedDraw();
+      if (fullTimerRef.current !== null) window.clearTimeout(fullTimerRef.current);
+      fullTimerRef.current = window.setTimeout(() => {
+        fullTimerRef.current = null;
+        previewRef.current = false;
+        renderFull(lightness);
+        schedDraw();
+      }, FULL_RENDER_DELAY_MS);
+    } else if (bitmapLRef.current !== lightness) {
+      renderFull(lightness);
+      schedDraw();
+    }
+  }, [lightness, renderFull, renderPreview, schedDraw]);
+
+  useEffect(() => () => {
+    if (fullTimerRef.current !== null) window.clearTimeout(fullTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -274,7 +326,16 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
 
   useEffect(() => {
     schedDraw();
-  }, [showDecor, showHandles, handles, pointerPt, dragging, schedDraw]);
+  }, [showDecor, showHandles, handles, pointerPt, dragging, lightness, schedDraw]);
+
+  // ── Lightness ────────────────────────────────────────────────────
+  const setActiveLightness = useCallback(
+    (l: number, preview = false) => {
+      previewRef.current = preview;
+      setArtist((prev) => setLightness(prev, activeId, l));
+    },
+    [activeId, setArtist],
+  );
 
   // ── Pointer events ───────────────────────────────────────────────
   const hitHandle = useCallback(
@@ -292,7 +353,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   );
 
   const polarAtCanvas = useCallback(
-    (pt: Point): Polar & { inside: boolean } => {
+    (pt: Point) => {
       const o = canvasToOff(pt);
       return offToPolar(o.x, o.y);
     },
@@ -308,7 +369,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
         const pol = polarAtCanvas(pt);
         const o = canvasToOff(pt);
         const rr = Math.hypot(o.x - MODEL.cx, o.y - MODEL.cy);
-        if (rr < MODEL.R_inner * 0.9 || rr > MODEL.R_color * 1.06) return; // centre disc or outside: nothing
+        if (rr > MODEL.R_color * 1.06) return; // outside the disc: nothing
         target = scheme.type === 'free' || scheme.type === 'roles' ? activeId : 'base';
         setArtist((prev) => applyDrag(prev, target as string, { theta: pol.theta, f: pol.f }));
       }
@@ -366,7 +427,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
         rgb: h.rgb,
         hex: h.hex,
         hsl: rgbToHsl(h.rgb.r, h.rgb.g, h.rgb.b),
-        name: h.role ? h.label : `${h.label} ${hueName(h.pos.theta)} ${h.pos.theta.toFixed(0)}°`,
+        name: h.role ? h.label : `${h.label} ${oklchHueName(h.pos.theta)} ${h.pos.theta.toFixed(0)}°`,
         role: h.role,
       })),
     );
@@ -397,6 +458,8 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     setActive: setActiveArtist,
     scheme,
     setScheme,
+    lightness,
+    setLightness: setActiveLightness,
     stateLabel,
     palette,
     tints,

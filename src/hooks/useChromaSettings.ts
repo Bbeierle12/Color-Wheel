@@ -31,11 +31,18 @@ export interface ChromaSettings {
   display: DisplayKey;
   /** Observer calibration: +1 model sign, −1 flipped. */
   sign: 1 | -1;
-  /** Depth wheel saturation, percent. */
+  /** Depth wheel saturation, percent of the largest chroma each sector can show. */
   wheelSaturation: number;
+  /**
+   * Depth wheel lightness (toe Lr) shared by every sector, or null to show each
+   * hue at its own cusp — the lightness where it is most colourful.
+   */
+  wheelLightness: number | null;
   /** Depth wheel selected sectors [A, B]. */
   pair: [number, number];
 }
+
+export const WHEEL_LIGHTNESS_RANGE = { min: 0.08, max: 0.97 } as const;
 
 export const CHROMA_DEFAULTS: ChromaSettings = Object.freeze({
   pupilOffsetMm: 0.3,
@@ -47,6 +54,7 @@ export const CHROMA_DEFAULTS: ChromaSettings = Object.freeze({
   display: 'oled',
   sign: 1,
   wheelSaturation: 100,
+  wheelLightness: null,
   pair: [0, 24],
 }) as ChromaSettings;
 
@@ -73,6 +81,7 @@ export function sanitizeChromaSettings(raw: unknown): ChromaSettings {
     display: isDisplayKey(r.display) ? r.display : d.display,
     sign: r.sign === -1 ? -1 : 1,
     wheelSaturation: inRange(r.wheelSaturation, 0, 100) ? r.wheelSaturation : d.wheelSaturation,
+    wheelLightness: inRange(r.wheelLightness, WHEEL_LIGHTNESS_RANGE.min, WHEEL_LIGHTNESS_RANGE.max) ? r.wheelLightness : null,
     pair,
   };
 }

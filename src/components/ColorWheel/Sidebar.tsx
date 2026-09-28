@@ -125,11 +125,14 @@ export function Sidebar({
         <div className="text-zinc-500">Temperature</div>
         <div className="text-right font-mono">{readout.temp}</div>
 
+        <div className="text-zinc-500">OKLCH</div>
+        <div className="text-right font-mono break-words">{`${fmt(readout.oklch.L * 100, 1)}% ${fmt(readout.oklch.C, 3)} ${fmt(readout.oklch.h, 1)}`}</div>
+
+        <div className="text-zinc-500">Lightness (Lr)</div>
+        <div className="text-right font-mono">{fmt(readout.lightness, 2)}</div>
+
         <div className="text-zinc-500">Value proxy</div>
         <div className="text-right font-mono">{`V≈${fmt(readout.valueProxy, 2)} / 10`}</div>
-
-        <div className="text-zinc-500">Chroma proxy</div>
-        <div className="text-right font-mono">{`C≈${fmt(readout.chromaProxy, 2)} (rel)`}</div>
 
         <div className="text-zinc-500">HEX</div>
         <div className="text-right font-mono">{readout.hex}</div>

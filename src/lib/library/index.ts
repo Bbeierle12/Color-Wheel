@@ -7,10 +7,12 @@
  * observer's calibration, so cards compute them live.
  */
 
-import { sanitizeScheme, defaultScheme, resolveHandles, type SchemeState, type RoleId } from '../selectors';
+import { sanitizeScheme, defaultScheme, resolveHandles, type SchemeState, type RoleId, type Polar } from '../selectors';
 import { ROLE_IDS } from '../selectors';
+import { migrateSchemeState } from '../migrate';
 
-export const LIBRARY_FORMAT_VERSION = 2;
+/** 2 = HSL-era handle positions, 3 = OKLCH coordinates (theta, f, l). */
+export const LIBRARY_FORMAT_VERSION = 3;
 export const LIBRARY_MAX = 200;
 export const LIBRARY_TAG_MAX = 8;
 
@@ -51,7 +53,7 @@ export interface LegacyCombo {
 }
 
 export interface LibraryFile {
-  version: typeof LIBRARY_FORMAT_VERSION;
+  version: number;
   exportedAt: number;
   schemes: SavedScheme[];
 }
@@ -87,15 +89,20 @@ function sanitizeColors(raw: unknown): SavedColor[] {
   return out;
 }
 
-/** Accepts any JSON value; returns a valid entry or null. */
-export function sanitizeSavedScheme(raw: unknown): SavedScheme | null {
+/**
+ * Accepts any JSON value; returns a valid entry or null. `legacyPositions`
+ * marks entries written before OKLCH coordinates (format 2), whose handle
+ * positions are converted first.
+ */
+export function sanitizeSavedScheme(raw: unknown, legacyPositions = false): SavedScheme | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const colors = sanitizeColors(r.colors);
   if (colors.length === 0) return null;
   const now = Date.now();
-  const scheme = r.scheme ? sanitizeScheme(r.scheme, defaultScheme('free')) : undefined;
   const wheel = r.wheel === 'artist' || r.wheel === 'depth' ? r.wheel : undefined;
+  const rawScheme = legacyPositions && wheel ? migrateSchemeState(r.scheme, wheel) : r.scheme;
+  const scheme = rawScheme ? sanitizeScheme(rawScheme, defaultScheme('free')) : undefined;
   const source: SchemeSource = (['artist', 'depth', 'palette', 'import', 'builtin'] as const).includes(r.source as SchemeSource) ? (r.source as SchemeSource) : 'import';
   const bgFromRole = colors.find((c) => c.role === 'background')?.hex;
   return {
@@ -122,7 +129,7 @@ export function migrateLegacyCombo(raw: unknown): SavedScheme | null {
   return sanitizeSavedScheme({ id: c.id, name: c.name, colors: c.colors, createdAt: c.createdAt, updatedAt: c.createdAt, source: 'palette', tags: ['migrated'] });
 }
 
-/** Parse an exported file: v2 object, or a bare v1 array. */
+/** Parse an exported file: v3 or v2 object (v2 positions are converted), or a bare v1 array. */
 export function parseLibraryFile(json: string): SavedScheme[] {
   let parsed: unknown;
   try {
@@ -130,11 +137,18 @@ export function parseLibraryFile(json: string): SavedScheme[] {
   } catch {
     return [];
   }
+  return parseLibraryValue(parsed);
+}
+
+/** Same as parseLibraryFile for an already-parsed JSON value. */
+export function parseLibraryValue(parsed: unknown): SavedScheme[] {
   if (Array.isArray(parsed)) {
-    return parsed.map((e) => sanitizeSavedScheme(e) ?? migrateLegacyCombo(e)).filter((e): e is SavedScheme => !!e);
+    // Bare arrays were written by the v1 library (name + hex list) or the v2 localStorage store.
+    return parsed.map((e) => sanitizeSavedScheme(e, true) ?? migrateLegacyCombo(e)).filter((e): e is SavedScheme => !!e);
   }
   if (parsed && typeof parsed === 'object' && Array.isArray((parsed as LibraryFile).schemes)) {
-    return (parsed as LibraryFile).schemes.map(sanitizeSavedScheme).filter((e): e is SavedScheme => !!e);
+    const legacy = (parsed as LibraryFile).version < LIBRARY_FORMAT_VERSION;
+    return (parsed as LibraryFile).schemes.map((e) => sanitizeSavedScheme(e, legacy)).filter((e): e is SavedScheme => !!e);
   }
   return [];
 }
@@ -175,33 +189,34 @@ export function entryFromScheme(args: {
 }
 
 /** Built-in starters: role schemes as artist-wheel states, so they load with handles. */
-function starter(id: string, name: string, tags: string[], free: { theta: number; f: number }[], notes: string): SavedScheme {
-  const scheme: SchemeState = { type: 'roles', base: free[0], params: { spread: 30, count: 3, offset: 60 }, free };
+function starter(id: string, name: string, tags: string[], free: Polar[], notes: string): SavedScheme {
+  const scheme: SchemeState = { type: 'roles', base: free[3], params: { spread: 30, count: 3, offset: 60 }, free };
   const handles = resolveHandles(scheme);
-  // Colours are resolved by the caller (needs the wheel's colour profile); placeholders here.
+  // Colours are resolved by the caller (resolveStarterColors in the hook); placeholders here.
   const colors: SavedColor[] = handles.map((h) => ({ hex: '#000000', label: h.label, role: h.role }));
   return { id: `builtin_${id}`, name, createdAt: 0, updatedAt: 0, source: 'builtin', scheme, wheel: 'artist', colors, tags, notes, builtin: true };
 }
 
+const c = (theta: number, f: number, l: number): Polar => ({ theta, f, l });
+
 /**
- * Starter definitions. Their colours must be resolved against the artist wheel
- * (see resolveStarterColors in the hook) because the wheel's tint profile is
- * what turns a polar position into a hex.
+ * Starter definitions in OKLCH wheel coordinates (hue, chroma fraction, toe
+ * lightness), in ROLE_IDS order: background, surface, text, primary, accent.
  */
 export const STARTER_DEFINITIONS: SavedScheme[] = [
   starter('light-ui', 'Light UI', ['ui', 'light'], [
-    { theta: 210, f: 0.03 }, { theta: 210, f: 0.12 }, { theta: 210, f: 1 }, { theta: 210, f: 0.85 }, { theta: 30, f: 0.9 },
+    c(240, 0.03, 0.97), c(240, 0.05, 0.93), c(250, 0.3, 0.25), c(255, 0.6, 0.55), c(55, 0.6, 0.7),
   ], 'Pale blue-grey background, deep blue text, warm accent.'),
   starter('dark-ui', 'Dark UI', ['ui', 'dark'], [
-    { theta: 240, f: 1 }, { theta: 240, f: 0.9 }, { theta: 60, f: 0.05 }, { theta: 180, f: 0.6 }, { theta: 330, f: 0.75 },
+    c(275, 0.15, 0.16), c(275, 0.15, 0.23), c(90, 0.03, 0.95), c(200, 0.5, 0.75), c(350, 0.6, 0.65),
   ], 'Deep indigo background, near-white text, cyan primary, pink accent.'),
   starter('high-contrast', 'High contrast', ['ui', 'accessible'], [
-    { theta: 0, f: 0.0 }, { theta: 0, f: 0.08 }, { theta: 0, f: 1 }, { theta: 240, f: 1 }, { theta: 0, f: 0.95 },
+    c(0, 0, 0.99), c(0, 0, 0.94), c(25, 0.6, 0.35), c(264, 0.9, 0.4), c(25, 0.8, 0.55),
   ], 'Near-white background, deep red text, blue primary.'),
   starter('warm', 'Warm earth', ['warm'], [
-    { theta: 40, f: 0.1 }, { theta: 40, f: 0.25 }, { theta: 20, f: 1 }, { theta: 20, f: 0.8 }, { theta: 170, f: 0.6 },
+    c(75, 0.08, 0.95), c(75, 0.12, 0.88), c(35, 0.35, 0.3), c(40, 0.45, 0.5), c(190, 0.4, 0.55),
   ], 'Cream background, brick text, teal accent.'),
   starter('cool', 'Cool sea', ['cool'], [
-    { theta: 190, f: 0.08 }, { theta: 190, f: 0.2 }, { theta: 220, f: 1 }, { theta: 200, f: 0.8 }, { theta: 50, f: 0.85 },
+    c(200, 0.05, 0.96), c(200, 0.1, 0.9), c(255, 0.4, 0.25), c(220, 0.5, 0.5), c(75, 0.55, 0.75),
   ], 'Pale aqua background, navy text, amber accent.'),
 ];

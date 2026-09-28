@@ -4,6 +4,7 @@ import App from '../src/App';
 import { LEGACY_LIBRARY_KEY, LIBRARY_STORAGE_KEY } from '../src/hooks/useSchemeLibrary';
 import { SCHEME_STORAGE_KEY } from '../src/hooks/useScheme';
 import { schemeFromColors } from '../src/hooks/useSchemeLoader';
+import { hexFromCoord } from '../src/lib/oklch';
 
 beforeEach(() => {
   localStorage.clear();
@@ -37,9 +38,12 @@ describe('schemeFromColors', () => {
     );
     expect(roles.type).toBe('roles');
     expect(roles.free).toHaveLength(5);
+    // artist coordinates reproduce the colours exactly
+    expect(hexFromCoord(roles.free[3])).toBe('#2563eb');
+    expect(hexFromCoord(roles.free[4])).toBe('#f97316');
     const free = schemeFromColors([{ hex: '#ff0000', label: 'A' }, { hex: '#00ff00', label: 'B' }, { hex: '#0000ff', label: 'C' }], 'depth');
     expect(free.type).toBe('free');
-    expect(free.free.map((p) => p.theta)).toEqual([5, 125, 245]); // snapped to sector centres
+    expect(free.free.map((p) => p.theta)).toEqual([25, 145, 265]); // OKLCH hues 29/142/264 snapped to sector centres
     expect(free.free.every((p) => p.f === 1)).toBe(true);
   });
 });
@@ -66,10 +70,11 @@ describe('Library page', () => {
     expect(cards()[0]).toHaveTextContent('Triadic');
     expect(cards()[0]).toHaveTextContent('#test');
     expect(cards()[0]).toHaveTextContent('#warm');
-    const stored = JSON.parse(localStorage.getItem(LIBRARY_STORAGE_KEY)!);
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_STORAGE_KEY)!).schemes;
     expect(stored).toHaveLength(1);
     expect(stored[0].scheme.type).toBe('triadic');
     expect(stored[0].wheel).toBe('artist');
+    expect(stored[0].scheme.base.l).toBeGreaterThan(0);
   });
 
   it('loads a built-in starter to the artist wheel as a Roles scheme', () => {

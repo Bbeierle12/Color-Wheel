@@ -1,3 +1,5 @@
+import { legacyWheelColor } from '../src/lib/migrate';
+import { coordToRgb } from '../src/lib/oklch';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   LIBRARY_FORMAT_VERSION,
@@ -151,6 +153,35 @@ describe('loadLibrary / saveLibrary', () => {
     localStorage.setItem(LIBRARY_STORAGE_KEY, '{bad');
     expect(loadLibrary()).toEqual([]);
     saveLibrary([roles, STARTERS[0]]);
-    expect(JSON.parse(localStorage.getItem(LIBRARY_STORAGE_KEY)!)).toHaveLength(1);
+    const stored = JSON.parse(localStorage.getItem(LIBRARY_STORAGE_KEY)!);
+    expect(stored.version).toBe(3);
+    expect(stored.schemes).toHaveLength(1);
+    expect(loadLibrary()).toHaveLength(1);
+  });
+
+  it('converts a v2 store (bare array with HSL-era positions) to OKLCH coordinates', () => {
+    // v2 roles scheme on the old wheel: hue 210, near-white tint (f 0.03) … saturated rim (f 1)
+    const v2 = [{
+      id: 'v2a', name: 'Old roles', createdAt: 1, updatedAt: 1, source: 'artist', wheel: 'artist', tags: [],
+      scheme: { type: 'roles', base: { theta: 210, f: 0.03 }, params: { spread: 30, count: 3, offset: 60 }, free: [
+        { theta: 210, f: 0.03 }, { theta: 210, f: 0.12 }, { theta: 210, f: 1 }, { theta: 210, f: 0.85 }, { theta: 30, f: 0.9 },
+      ] },
+      colors: [
+        { hex: '#f6f8fa', label: 'Background', role: 'background' }, { hex: '#e0e8f0', label: 'Surface', role: 'surface' },
+        { hex: '#1f4f80', label: 'Text', role: 'text' }, { hex: '#2b6cb0', label: 'Primary', role: 'primary' }, { hex: '#c0561e', label: 'Accent', role: 'accent' },
+      ],
+    }];
+    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(v2));
+    const [e] = loadLibrary();
+    expect(e.scheme!.type).toBe('roles');
+    for (const p of e.scheme!.free) expect(p.l).toBeGreaterThanOrEqual(0);
+    // the near-white background tint stays near white and low chroma; the rim handle becomes a dark saturated blue
+    expect(e.scheme!.free[0].l).toBeGreaterThan(0.9);
+    expect(e.scheme!.free[0].f).toBeLessThan(0.15);
+    expect(e.scheme!.free[2].l).toBeLessThan(0.6);
+    expect(e.scheme!.free[2].theta).toBeGreaterThan(230); // HSL 210 (azure) → OKLCH ~240–250
+    // the colours the old handles showed are reproduced by the new coordinates
+    const hex = legacyWheelColor(210, 1);
+    expect(coordToRgb(e.scheme!.free[2]).rgb).toEqual(hex);
   });
 });

@@ -5,7 +5,8 @@
  */
 
 import { createContext, useContext } from 'react';
-import { defaultScheme, sanitizeScheme, type RoleId, type SchemeState } from '../lib/selectors';
+import { DEFAULT_BASE, defaultScheme, sanitizeScheme, type RoleId, type SchemeState } from '../lib/selectors';
+import { migrateSchemeState } from '../lib/migrate';
 
 export interface SentColor {
   hex: string;
@@ -20,10 +21,12 @@ export interface SchemeStore {
 }
 
 export const SCHEME_STORAGE_KEY = 'color-wheel-schemes';
+/** Coordinate format: 2 = OKLCH (theta, f, l). Stores without a version hold v1 HSL-profile positions. */
+export const SCHEME_STORE_VERSION = 2;
 
 export const SCHEME_DEFAULTS: SchemeStore = {
-  artist: defaultScheme('complementary', { theta: 0, f: 1 }),
-  depth: defaultScheme('complementary', { theta: 5, f: 1 }),
+  artist: defaultScheme('complementary', DEFAULT_BASE),
+  depth: defaultScheme('complementary', { theta: 25, f: 1, l: 0.6 }),
   sent: null,
 };
 
@@ -32,7 +35,11 @@ const HEX = /^#[0-9a-f]{6}$/i;
 export function sanitizeSchemeStore(raw: unknown): SchemeStore {
   const d = SCHEME_DEFAULTS;
   if (!raw || typeof raw !== 'object') return { ...d };
-  const r = raw as Record<string, unknown>;
+  let r = raw as Record<string, unknown>;
+  if (r.version !== SCHEME_STORE_VERSION) {
+    // v1: positions on the old HSL tint wheel and HSL-hue sectors. Convert, then sanitize as usual.
+    r = { ...r, artist: migrateSchemeState(r.artist, 'artist'), depth: migrateSchemeState(r.depth, 'depth') };
+  }
   const sent = Array.isArray(r.sent)
     ? r.sent
         .filter((c): c is SentColor => !!c && typeof c === 'object' && HEX.test(String((c as SentColor).hex)) && typeof (c as SentColor).label === 'string')
@@ -57,7 +64,7 @@ export function loadSchemeStore(): SchemeStore {
 
 export function saveSchemeStore(s: SchemeStore): void {
   try {
-    localStorage.setItem(SCHEME_STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(SCHEME_STORAGE_KEY, JSON.stringify({ version: SCHEME_STORE_VERSION, ...s }));
   } catch {
     // Storage full or unavailable — silently fail
   }

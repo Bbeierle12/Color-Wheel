@@ -1,6 +1,6 @@
 /**
- * The chromostereopsis wheel: discrete saturated sectors on black with thin black
- * gaps, so every sector has a crisp edge against black. Scheme handles snap to
+ * The chromostereopsis wheel: discrete sectors of OKLCH hue on black with thin
+ * black gaps, so every sector has a crisp edge against black. Scheme handles snap to
  * sectors: tap to place the base (or the active handle on Free/Roles), drag a
  * handle to adjust the scheme.
  */
@@ -10,6 +10,8 @@ import { GAP_PX, INNER_FRAC, N_SECTORS, OUTER_FRAC, angleAt, sectorCentre, secto
 
 interface DepthWheelProps {
   saturation: number;
+  /** Shared toe lightness, or null for each hue at its own cusp. */
+  lightness: number | null;
   handles: DepthHandle[];
   activeId: string | null;
   /** Pointer went down on a handle, or on the ring away from any handle (id null). */
@@ -27,7 +29,7 @@ interface Geom {
 
 const HIT_PX = 22;
 
-export function DepthWheel({ saturation, handles, activeId, onPointerStart, onPointerDrag, onPointerEnd }: DepthWheelProps) {
+export function DepthWheel({ saturation, lightness, handles, activeId, onPointerStart, onPointerDrag, onPointerEnd }: DepthWheelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const geomRef = useRef<Geom>({ cx: 0, cy: 0, r0: 0, r1: 0 });
@@ -69,7 +71,7 @@ export function DepthWheel({ saturation, handles, activeId, onPointerStart, onPo
 
     for (let i = 0; i < N_SECTORS; i++) {
       sectorPath(i);
-      ctx.fillStyle = sectorHex(i, saturation);
+      ctx.fillStyle = sectorHex(i, saturation, lightness);
       ctx.fill();
     }
     ctx.strokeStyle = '#000';
@@ -107,7 +109,7 @@ export function DepthWheel({ saturation, handles, activeId, onPointerStart, onPo
       ctx.textBaseline = 'middle';
       ctx.fillText(short, x, y + 0.5);
     }
-  }, [saturation, handles, activeId]);
+  }, [saturation, lightness, handles, activeId]);
 
   useEffect(() => {
     draw();

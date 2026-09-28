@@ -24,7 +24,7 @@ export function DepthChart({ handles, reference }: DepthChartProps) {
 
   const { pts, maxAbs, nearest, farthest } = useMemo(() => {
     const pts = Array.from({ length: N_SECTORS }, (_, i) => {
-      const p = pairWithSettings(s, d, sectorHex(i, s.wheelSaturation), refHex);
+      const p = pairWithSettings(s, d, sectorHex(i, s.wheelSaturation, s.wheelLightness), refHex);
       return { i, d: p.ok && p.stable ? p.depthMm : 0, ok: p.ok && p.stable };
     });
     const maxAbs = Math.max(1, ...pts.map((p) => Math.abs(p.d)));
@@ -53,7 +53,7 @@ export function DepthChart({ handles, reference }: DepthChartProps) {
               y={Math.min(yy, MID).toFixed(1)}
               width={(bw - 1.6).toFixed(1)}
               height={Math.max(Math.abs(yy - MID), 0.8).toFixed(1)}
-              fill={sectorHex(p.i, Math.max(s.wheelSaturation, 35))}
+              fill={sectorHex(p.i, Math.max(s.wheelSaturation, 35), s.wheelLightness)}
               opacity={p.ok ? 1 : 0.25}
             />
           );
@@ -71,7 +71,7 @@ export function DepthChart({ handles, reference }: DepthChartProps) {
         </text>
       </svg>
       <p className="text-[11px] text-zinc-400 mt-1">
-        Nearest sector ≈ {sectorHue(nearest.i)}°, farthest ≈ {sectorHue(farthest.i)}° ({fmtCm(nearest.d - farthest.d)} apart at {s.distanceCm} cm).
+        Nearest sector ≈ hue {sectorHue(nearest.i).toFixed(0)}°, farthest ≈ hue {sectorHue(farthest.i).toFixed(0)}° ({fmtCm(nearest.d - farthest.d)} apart at {s.distanceCm} cm).
       </p>
     </div>
   );

@@ -8,14 +8,14 @@
  */
 
 import { createContext, useContext } from 'react';
-import { rgbToHex } from '../utils/colorMath';
-import { wheelColorAtPolar } from '../lib/wheelRenderer';
+import { coordToRgb } from '../lib/oklch';
 import { resolveHandles } from '../lib/selectors';
 import {
+  LIBRARY_FORMAT_VERSION,
   LIBRARY_MAX,
   STARTER_DEFINITIONS,
   migrateLegacyCombo,
-  sanitizeSavedScheme,
+  parseLibraryValue,
   type SavedScheme,
 } from '../lib/library';
 
@@ -23,13 +23,10 @@ export const LIBRARY_STORAGE_KEY = 'color-wheel-scheme-library';
 export const LEGACY_LIBRARY_KEY = 'color-wheel-library';
 const MIGRATED_FLAG = 'color-wheel-scheme-library-migrated';
 
-/** Resolve a starter's polar handles to hex through the artist wheel's colour profile. */
+/** Resolve a starter's wheel coordinates to hex. */
 export function resolveStarterColors(s: SavedScheme): SavedScheme {
   if (!s.scheme) return s;
-  const colors = resolveHandles(s.scheme).map((h) => {
-    const rgb = wheelColorAtPolar(h.pos.theta, h.pos.f);
-    return { hex: rgbToHex(rgb.r, rgb.g, rgb.b), label: h.label, role: h.role };
-  });
+  const colors = resolveHandles(s.scheme).map((h) => ({ hex: coordToRgb(h.pos).hex, label: h.label, role: h.role }));
   return { ...s, colors, background: colors.find((c) => c.role === 'background')?.hex };
 }
 
@@ -44,10 +41,14 @@ function readJson(key: string): unknown {
   }
 }
 
-/** User entries only (starters are appended at read time). */
+/**
+ * User entries only (starters are appended at read time). The store is a
+ * versioned object; a bare array is the v2 store, whose handle positions are
+ * converted to OKLCH coordinates on the way in.
+ */
 export function loadLibrary(): SavedScheme[] {
   const stored = readJson(LIBRARY_STORAGE_KEY);
-  let entries: SavedScheme[] = Array.isArray(stored) ? stored.map(sanitizeSavedScheme).filter((e): e is SavedScheme => !!e && !e.builtin) : [];
+  let entries: SavedScheme[] = parseLibraryValue(stored).filter((e) => !e.builtin);
   let migrated = false;
   try {
     migrated = localStorage.getItem(MIGRATED_FLAG) === '1';
@@ -72,7 +73,7 @@ export function loadLibrary(): SavedScheme[] {
 
 export function saveLibrary(entries: SavedScheme[]): void {
   try {
-    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(entries.filter((e) => !e.builtin)));
+    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: LIBRARY_FORMAT_VERSION, exportedAt: Date.now(), schemes: entries.filter((e) => !e.builtin) }));
   } catch {
     // Storage full or unavailable — silently fail
   }

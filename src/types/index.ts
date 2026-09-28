@@ -152,10 +152,11 @@ export interface Sample {
   xOff: number;
   yOff: number;
 
-  // Wheel position
+  // Wheel position (OKLCH hue, radius, chroma fraction, toe lightness)
   theta: number;
   r: number;
   f: number;
+  lightness: number;
   inside: boolean;
 
   // Basic color values

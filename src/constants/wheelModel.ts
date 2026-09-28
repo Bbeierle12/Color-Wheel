@@ -1,9 +1,18 @@
 /**
- * Color wheel geometry constants
+ * Color wheel geometry constants.
+ *
+ * The artist wheel is an OKLCH slice: a full disc whose centre is the grey of
+ * the current lightness, angle = OKLCH hue (0 at top, clockwise), radius =
+ * absolute chroma up to C_SCALE at the rim.
  */
 
-/** Offscreen canvas size (high resolution for quality) */
-export const OFF_SIZE = 1600;
+import { C_SCALE } from '../lib/oklch';
+
+/** Offscreen bitmap size. Re-rendered on every lightness change, so kept moderate. */
+export const OFF_SIZE = 1024;
+
+/** Bitmap size used while the lightness slider is being dragged. */
+export const OFF_SIZE_PREVIEW = 320;
 
 /** Wheel geometry model */
 export const MODEL = {
@@ -11,29 +20,29 @@ export const MODEL = {
   cx: OFF_SIZE / 2,
   /** Center Y coordinate */
   cy: OFF_SIZE / 2,
-  /** Outer radius of color area */
-  R_color: OFF_SIZE * 0.44,
-  /** Inner radius (center hole) */
-  R_inner: OFF_SIZE * 0.18,
+  /** Outer radius of color area (f = 1, C = C_SCALE) */
+  R_color: OFF_SIZE * 0.4,
+  /** Inner radius: none — the centre is the neutral axis */
+  R_inner: 0,
   /** Outer tick mark radius */
-  R_tickOuter: OFF_SIZE * 0.49,
+  R_tickOuter: OFF_SIZE * 0.44,
   /** Inner tick mark radius (major) */
-  R_tickInner: OFF_SIZE * 0.465,
+  R_tickInner: OFF_SIZE * 0.417,
   /** Inner tick mark radius (minor) */
-  R_tickMinorInner: OFF_SIZE * 0.475,
+  R_tickMinorInner: OFF_SIZE * 0.427,
 } as const;
 
-/** Ring fraction positions for concentric guides */
-export const RING_FRACS = [0.18, 0.32, 0.46, 0.6, 0.74, 0.88, 1.0] as const;
+/** Absolute-chroma reference rings, as radius fractions. */
+export const CHROMA_RINGS = [0.1, 0.2, 0.3].map((c) => ({ c, f: c / C_SCALE }));
 
-/** Hue family labels for wheel decoration */
+/** Hue family labels at their OKLCH hues. */
 export const HUE_LABELS = [
-  { text: 'Red', angle: 0, radius: 0.92 },
-  { text: 'Yellow', angle: 60, radius: 0.92 },
-  { text: 'Cyan', angle: 180, radius: 0.92 },
-  { text: 'Blue', angle: 240, radius: 0.92 },
-  { text: 'Blue-Green', angle: 200, radius: 0.78 },
-  { text: 'Yellow-Green', angle: 120, radius: 0.78 },
-  { text: 'Red-Violet', angle: 315, radius: 0.78 },
-  { text: 'Red-Orange', angle: 345, radius: 0.78 },
+  { text: 'Red', angle: 29, radius: 0.93 },
+  { text: 'Orange', angle: 53, radius: 0.93 },
+  { text: 'Yellow', angle: 110, radius: 0.93 },
+  { text: 'Green', angle: 142, radius: 0.93 },
+  { text: 'Cyan', angle: 195, radius: 0.93 },
+  { text: 'Blue', angle: 264, radius: 0.93 },
+  { text: 'Violet', angle: 294, radius: 0.93 },
+  { text: 'Magenta', angle: 328, radius: 0.93 },
 ] as const;
