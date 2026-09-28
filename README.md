@@ -230,7 +230,7 @@ npm run logs -- --file report.json            # a report pasted from the panel
 LOG_READ_TOKEN=… npm run logs -- --delete     # wipe the log
 ```
 
-The same token works in the Diagnostics panel under **Remote log**. The build emits hidden source maps (`dist/assets/*.js.map`), which `npm run logs` fetches from the site to turn minified frames into `src/…:line:col`; for an older build, run `npm run build` at that commit and the script falls back to the local maps.
+The same token works in the Diagnostics panel under **Remote log**. The build emits hidden source maps (`dist/assets/*.js.map.json` — Vercel refuses to serve `*.map`), which `npm run logs` fetches from the site to turn minified frames into `src/…:line:col`; for an older build, run `npm run build` at that commit and the script falls back to the local maps.
 
 Environment variables on Vercel: `BLOB_READ_WRITE_TOKEN` (set automatically when the Blob store is linked) and `LOG_READ_TOKEN` (any long random string). Without a Blob token the endpoint accepts and drops reports rather than failing the client.
 

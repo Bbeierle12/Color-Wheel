@@ -10,9 +10,10 @@
  *   npm run logs -- --raw                           # skip source-map lookup
  *   LOG_READ_TOKEN=… npm run logs -- --delete       # wipe the server log
  *
- * Source maps come from `${bundleUrl}.map` on the site (the build emits
- * hidden maps); when that 404s — an older build — the script falls back to
- * dist/assets/*.map from a local `npm run build` of the same commit.
+ * Source maps come from `${bundleUrl}.map.json` on the site (the build emits
+ * hidden maps under that name because Vercel refuses to serve *.map); when
+ * that 404s — an older build — the script falls back to dist/assets/ from a
+ * local `npm run build` of the same commit.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -45,15 +46,20 @@ const mapCache = new Map();
 async function loadMap(bundleUrl) {
   if (mapCache.has(bundleUrl)) return mapCache.get(bundleUrl);
   let tracer = null;
-  try {
-    const res = await fetch(`${bundleUrl}.map`);
-    if (res.ok) tracer = new TraceMap(await res.json());
-  } catch {
-    /* fall through */
-  }
-  if (!tracer) {
+  // the build emits *.map.json (Vercel refuses to serve *.map); try both
+  for (const suffix of ['.map.json', '.map']) {
+    if (tracer) break;
     try {
-      const local = join(process.cwd(), 'dist', 'assets', `${basename(new URL(bundleUrl).pathname)}.map`);
+      const res = await fetch(`${bundleUrl}${suffix}`);
+      if (res.ok) tracer = new TraceMap(await res.json());
+    } catch {
+      /* try the next */
+    }
+  }
+  for (const suffix of ['.map.json', '.map']) {
+    if (tracer) break;
+    try {
+      const local = join(process.cwd(), 'dist', 'assets', `${basename(new URL(bundleUrl).pathname)}${suffix}`);
       tracer = new TraceMap(JSON.parse(await readFile(local, 'utf8')));
     } catch {
       /* no map available */
