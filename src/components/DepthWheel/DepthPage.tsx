@@ -17,6 +17,7 @@ import { useChromaSettings, WHEEL_LIGHTNESS_RANGE } from '../../hooks/useChromaS
 import { useScheme, type SentColor } from '../../hooks/useScheme';
 import { coordToRgb } from '../../lib/oklch';
 import { GamutControl } from '../ColorWheel/GamutControl';
+import { ShareButton } from '../Share/ShareButton';
 import { applyDrag, defaultScheme, referenceHandleId, shuffleScheme, snapTheta, toggleLock } from '../../lib/selectors';
 import { SelectorControls } from '../Selectors/SelectorControls';
 import { HandleList } from '../Selectors/HandleList';
@@ -163,6 +164,7 @@ export function DepthPage() {
               <button type="button" className={btn()} onClick={() => setDepth(defaultScheme('complementary', { theta: 25, f: 1, l: 0.6 }))} title="Back to the default scheme">
                 Reset
               </button>
+              <ShareButton wheel="depth" scheme={scheme} dark />
             </div>
             <div className="mt-3">
               <SaveSchemeForm wheel="depth" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role, coord: h.coord }))} dark />

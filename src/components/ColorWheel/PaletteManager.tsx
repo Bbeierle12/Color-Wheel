@@ -110,7 +110,7 @@ export function PaletteManager({
       {/* CSS preview */}
       {paletteCss && (
         <div className="col-span-2 mt-2">
-          <pre className="text-[10px] bg-zinc-100 p-2 rounded-lg overflow-x-auto max-h-32">
+          <pre className="text-[10px] bg-zinc-100 p-2 rounded-lg overflow-x-auto max-h-32" aria-label="Palette CSS">
             {paletteCss}
           </pre>
         </div>

@@ -9,6 +9,8 @@ import { useSchemeLoader } from '../../hooks/useSchemeLoader';
 import { parseLibraryFile, serializeLibrary, type SavedScheme } from '../../lib/library';
 import { SELECTOR_TYPES, type SelectorType } from '../../lib/selectors';
 import { SchemeCard } from './SchemeCard';
+import { ComparePanel } from './ComparePanel';
+import { CVD_TYPES, type CvdType } from '../../lib/cvd';
 
 type SortKey = 'newest' | 'oldest' | 'name';
 type RoleFilter = 'any' | 'roles' | 'no-roles';
@@ -30,7 +32,13 @@ export function LibraryPage({ onNavigate }: LibraryPageProps) {
   const [showBuiltin, setShowBuiltin] = useState(true);
   const [confirmClear, setConfirmClear] = useState(false);
   const [notice, setNotice] = useState('');
+  const [vision, setVision] = useState<CvdType | null>(null);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const toggleCompare = (s: SavedScheme) =>
+    setCompareIds((ids) => (ids.includes(s.id) ? ids.filter((id) => id !== s.id) : [...ids.slice(-1), s.id]));
+  const compared = compareIds.map((id) => schemes.find((s) => s.id === id)).filter((s): s is SavedScheme => !!s);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -158,7 +166,18 @@ export function LibraryPage({ onNavigate }: LibraryPageProps) {
           <label className="inline-flex items-center gap-1.5 text-xs text-zinc-600 min-h-[40px]">
             <input type="checkbox" checked={showBuiltin} onChange={(e) => setShowBuiltin(e.target.checked)} /> built-in
           </label>
+          <select className={input} value={vision ?? 'normal'} onChange={(e) => setVision(e.target.value === 'normal' ? null : (e.target.value as CvdType))} aria-label="Colour vision">
+            <option value="normal">Typical vision</option>
+            {CVD_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {compared.length === 2 && <ComparePanel a={compared[0]} b={compared[1]} vision={vision} onClose={() => setCompareIds([])} />}
+        {compared.length === 1 && <div className="text-xs text-zinc-500">Pick one more scheme to compare with “{compared[0].name}”.</div>}
 
         {notice && (
           <div className="text-xs text-zinc-600" role="status">
@@ -173,7 +192,7 @@ export function LibraryPage({ onNavigate }: LibraryPageProps) {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {visible.map((s) => (
-              <SchemeCard key={s.id} scheme={s} {...actions} />
+              <SchemeCard key={s.id} scheme={s} {...actions} vision={vision} compared={compareIds.includes(s.id)} onToggleCompare={toggleCompare} />
             ))}
           </div>
         )}

@@ -15,6 +15,10 @@ import { SaveSchemeForm } from '../Library/SaveSchemeForm';
 import { GamutControl } from './GamutControl';
 import { ColorInput } from './ColorInput';
 import { ContrastTable } from './ContrastTable';
+import { CvdStrip } from './CvdStrip';
+import { ShareButton } from '../Share/ShareButton';
+import { ExportPanel } from '../Export/ExportPanel';
+import type { ExportColor } from '../../lib/export';
 import type { Gamut, WheelCoord } from '../../lib/oklch';
 
 interface SidebarProps {
@@ -94,6 +98,10 @@ export function Sidebar({
   const depthColors = handles.filter((h) => h.id !== background?.id).map((h) => ({ hex: h.hex, label: h.label, coord: h.pos, css: h.css }));
   const roleCoords = scheme.type === 'roles' ? Object.fromEntries(handles.filter((h) => h.role).map((h) => [h.role as string, h.pos])) : null;
   const tool = 'px-3 py-2 text-xs rounded-xl border border-zinc-200 bg-zinc-50 disabled:opacity-40 min-h-[36px]';
+  const exportSources: Record<string, ExportColor[]> = {
+    Scheme: handles.map((h) => ({ name: h.role ? h.label : `${h.label} ${h.hex}`, hex: h.hex, css: h.css, inSrgb: h.inSrgb })),
+    Palette: palette.map((p) => ({ name: p.role ?? p.name, hex: p.hex, css: p.css ?? p.hex, inSrgb: !p.css || p.css === p.hex })),
+  };
 
   return (
     <aside className="bg-white border border-zinc-200 rounded-2xl p-3 h-fit sticky top-4">
@@ -147,9 +155,22 @@ export function Sidebar({
         <button className="px-3 py-2 text-xs rounded-xl border border-zinc-900 bg-zinc-900 text-white" onClick={onSendToDepth} type="button">
           Send to Depth
         </button>
+        <ShareButton wheel="artist" scheme={scheme} />
       </div>
       <div className="mt-3">
         <SaveSchemeForm wheel="artist" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role, coord: h.pos }))} />
+      </div>
+
+      {/* Colour vision */}
+      <div className="mt-4 text-[11px] uppercase tracking-wider text-zinc-500">Colour vision</div>
+      <div className="mt-2">
+        <CvdStrip colors={handles.map((h) => ({ hex: h.hex, label: h.label }))} />
+      </div>
+
+      {/* Export */}
+      <div className="mt-4 text-[11px] uppercase tracking-wider text-zinc-500">Export</div>
+      <div className="mt-2">
+        <ExportPanel sources={exportSources} title={scheme.type === 'roles' ? 'Roles scheme' : 'Colour scheme'} />
       </div>
 
       {/* Chromostereopsis for the scheme */}

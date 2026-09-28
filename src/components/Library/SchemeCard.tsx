@@ -12,6 +12,7 @@ import { useDepthVerdict } from '../../hooks/useDepthVerdict';
 import { RolePreview } from './RolePreview';
 import { ContrastTable } from '../ColorWheel/ContrastTable';
 import { coordFromHex } from '../../lib/oklch';
+import { simulateHex, type CvdType } from '../../lib/cvd';
 
 export interface SchemeCardActions {
   onLoadArtist: (s: SavedScheme) => void;
@@ -26,12 +27,17 @@ export interface SchemeCardActions {
 interface SchemeCardProps extends SchemeCardActions {
   scheme: SavedScheme;
   compact?: boolean;
+  /** Simulate a colour-vision deficiency on the swatches and preview. */
+  vision?: CvdType | null;
+  /** Compare selection: whether this card is picked, and a toggle (hidden when undefined). */
+  compared?: boolean;
+  onToggleCompare?: (s: SavedScheme) => void;
 }
 
 const LEVEL = ['text-zinc-500', 'text-lime-600', 'text-amber-600', 'text-red-600'];
 const btn = 'px-2.5 py-1.5 text-[11px] rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 min-h-[32px]';
 
-export function SchemeCard({ scheme: s, compact = false, onLoadArtist, onLoadDepth, onLoadPalette, onDuplicate, onRename, onTags, onDelete }: SchemeCardProps) {
+export function SchemeCard({ scheme: s, compact = false, vision = null, compared, onToggleCompare, onLoadArtist, onLoadDepth, onLoadPalette, onDuplicate, onRename, onTags, onDelete }: SchemeCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(s.name);
   const [tagText, setTagText] = useState(s.tags.join(', '));
@@ -62,15 +68,21 @@ export function SchemeCard({ scheme: s, compact = false, onLoadArtist, onLoadDep
   };
 
   return (
-    <article className="bg-white border border-zinc-200 rounded-2xl p-3 flex flex-col gap-2 min-w-0" aria-label={s.name}>
+    <article className={`bg-white border rounded-2xl p-3 flex flex-col gap-2 min-w-0 ${compared ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-zinc-200'}`} aria-label={s.name}>
       {/* Swatch strip */}
-      <div className="flex h-10 rounded-xl overflow-hidden border border-zinc-200">
+      <div className="flex h-10 rounded-xl overflow-hidden border border-zinc-200 relative">
         {s.colors.map((c, i) => (
-          <div key={i} className="flex-1" style={{ background: savedColorCss(c, gamut) }} title={`${c.label} ${c.hex}`} />
+          <div key={i} className="flex-1" style={{ background: vision ? simulateHex(c.hex, vision) : savedColorCss(c, gamut) }} title={`${c.label} ${c.hex}`} />
         ))}
+        {onToggleCompare && !compact && (
+          <label className="absolute top-1 right-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/85 text-[10px] text-zinc-700 cursor-pointer">
+            <input type="checkbox" checked={!!compared} onChange={() => onToggleCompare(s)} aria-label={`Compare ${s.name}`} />
+            compare
+          </label>
+        )}
       </div>
 
-      {!compact && hasRoles && <RolePreview colors={s.colors} />}
+      {!compact && hasRoles && <RolePreview colors={s.colors} vision={vision} />}
       {!compact && roleCoords && <ContrastTable roles={roleCoords} gamut={gamut} compact />}
 
       {/* Title + badges */}

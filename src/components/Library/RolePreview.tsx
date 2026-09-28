@@ -5,16 +5,20 @@
 
 import { savedColorCss, type SavedColor } from '../../lib/library';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
+import { simulateHex, type CvdType } from '../../lib/cvd';
 
 interface RolePreviewProps {
   colors: SavedColor[];
+  /** Simulate a colour-vision deficiency (from each colour's sRGB fallback). */
+  vision?: CvdType | null;
 }
 
-export function RolePreview({ colors }: RolePreviewProps) {
+export function RolePreview({ colors, vision = null }: RolePreviewProps) {
   const { derived } = useChromaSettings();
   const role = (r: string) => {
     const c = colors.find((x) => x.role === r);
-    return c ? savedColorCss(c, derived.gamut) : undefined;
+    if (!c) return undefined;
+    return vision ? simulateHex(c.hex, vision) : savedColorCss(c, derived.gamut);
   };
   const background = role('background') ?? '#ffffff';
   const surface = role('surface') ?? background;

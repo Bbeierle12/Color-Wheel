@@ -99,7 +99,7 @@ describe('Library page', () => {
     render(<App />);
     openLibrary();
     fireEvent.click(within(cards()[0]).getByRole('button', { name: /to palette/i }));
-    const css = screen.getByText(/:root/).textContent ?? '';
+    const css = screen.getByLabelText('Palette CSS').textContent ?? '';
     expect(css).toMatch(/--background: #[0-9a-f]{6}/);
     expect(css).toMatch(/--text: #[0-9a-f]{6}/);
   });
@@ -140,6 +140,27 @@ describe('Library page', () => {
     openLibrary();
     expect(cards()[0]).toHaveTextContent('#migrated');
     expect(cards()[0]).toHaveTextContent('2 colours');
+  });
+
+  it('compare shows two picked schemes side by side; the vision select simulates on the cards', () => {
+    render(<App />);
+    openLibrary();
+    fireEvent.click(within(cards()[0]).getByRole('checkbox', { name: /^compare/i }));
+    expect(screen.getByText(/pick one more scheme/i)).toBeInTheDocument();
+    fireEvent.click(within(cards()[1]).getByRole('checkbox', { name: /^compare/i }));
+    const panel = screen.getByRole('region', { name: /compare schemes/i });
+    expect(within(panel).getAllByTestId('compare-column')).toHaveLength(2);
+    expect(within(panel).getAllByTestId('contrast-table').length).toBeGreaterThanOrEqual(2);
+    // picking a third swaps out the oldest
+    fireEvent.click(within(cards()[2]).getByRole('checkbox', { name: /^compare/i }));
+    expect(within(screen.getByRole('region', { name: /compare schemes/i })).getAllByTestId('compare-column')).toHaveLength(2);
+    fireEvent.click(within(screen.getByRole('region', { name: /compare schemes/i })).getByRole('button', { name: /close/i }));
+    expect(screen.queryByRole('region', { name: /compare schemes/i })).toBeNull();
+    // vision select changes the swatch colours
+    const strip = () => (cards()[0].querySelector('.flex.h-10 > div') as HTMLElement).style.background;
+    const before = strip();
+    fireEvent.change(screen.getByLabelText(/colour vision/i), { target: { value: 'protan' } });
+    expect(strip()).not.toBe(before);
   });
 
   it('Sketch page lists library colours', () => {

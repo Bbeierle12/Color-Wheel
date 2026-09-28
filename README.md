@@ -11,6 +11,9 @@ An artist-friendly colour wheel built with React, TypeScript, and Canvas. The wh
 - **Scheme selectors**: Complementary, split complementary, analogous, triadic, tetradic, monochrome (one hue from dark to light), free (up to six) and roles (background, surface, text, primary, accent). Handles are drawn on the wheel: tap to place the base, drag the base to rotate the whole scheme, drag a derived handle to change that selector's parameter (spread, spacing, rectangle offset), and drag freely on Free/Roles. Template selectors share the base's lightness and chroma (true OKLCH harmonies); Free and Roles carry lightness per handle, and handles on another lightness are drawn ghosted until selected.
 - **Palette Builder**: Capture swatches or a whole scheme from the wheel and export as CSS custom properties, named by role (`--background`, `--accent`) when the scheme has roles
 - **Scheme library**: Save schemes with their structure (selector, base, parameters, roles), not just their colours. A Library tab lists them with swatches, a mock UI preview for role schemes, a live chromostereopsis verdict, search, filters and sort; load any entry back onto the artist wheel (handles restored), to the Depth tab, or into the palette. Five built-in starters. Export/import the library as JSON. Stored in the browser; combos saved by earlier versions are migrated automatically.
+- **Editing basics**: type any colour (`#hex`, `rgb()`, `hsl()`, `oklch()`, `oklab()`, `color(display-p3 …)`) or pick one from the screen (EyeDropper API where available) to set the active handle; undo/redo per wheel (Ctrl/Cmd+Z, Shift+Z); shuffle hues with per-handle locks on Free/Roles; reset; arrow-key nudging on the focused wheel; an OKLCH lightness ramp (50–950) of the active colour.
+- **Contrast**: WCAG 2.1 ratios with AA/AAA and APCA Lc for the role pairs that matter (text/background, text/surface, primary/background, button text on primary, accent), on the artist sidebar and library cards, using each gamut's own luminance.
+- **Sharing and output**: a Copy-link button encodes the scheme in the URL; opening the link restores it on the right wheel. Export the scheme or palette as CSS variables, SCSS, Tailwind v4 `@theme`, JSON, Android `colors.xml` or Jetpack Compose, with sRGB hex everywhere and `color(display-p3 …)` overrides for wide colours. Colour-vision simulation (Machado 2009: protanopia, deuteranopia, tritanopia) on the sidebar and library cards, and a side-by-side compare of two library entries.
 - **Artist-Friendly Descriptors**: Hue family names, warm/cool temperature, value and chroma proxies
 - **Technical Color Data**: Full color space conversions including HSL, HSV, HWB, CMYK, XYZ, Lab, LCH, OKLab, OKLCH
 - **Accessibility**: WCAG contrast ratios against white and black backgrounds
@@ -107,7 +110,11 @@ src/
 │   ├── useSchemeLoader.ts      # Load an entry to a wheel / palette; save from a wheel
 │   └── useChromaSettings.ts    # Shared eye model + calibration (localStorage)
 ├── lib/
-│   ├── oklch/                  # OKLCH model: conversions, toe, gamut boundary, slice renderer
+│   ├── oklch/                  # OKLCH model: conversions, toe, gamut boundary, slice renderer, parse, ramp
+│   ├── contrast/               # WCAG 2.1 + APCA for role pairs
+│   ├── cvd/                    # Colour-vision-deficiency simulation (Machado 2009)
+│   ├── export/                 # CSS / SCSS / Tailwind / JSON / Android / Compose
+│   ├── share/                  # Scheme ⇄ URL hash
 │   ├── selectors/              # Scheme selectors: resolve handles, apply drags, lightness
 │   ├── library/                # Saved-scheme format, sanitising, export/import, starters
 │   ├── migrate/                # HSL-era positions → OKLCH coordinates

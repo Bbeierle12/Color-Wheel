@@ -5,11 +5,14 @@ import { CHROMA_STORAGE_KEY } from '../src/hooks/useChromaSettings';
 import { SCHEME_STORAGE_KEY, sanitizeSchemeStore, SCHEME_DEFAULTS } from '../src/hooks/useScheme';
 import { coordToRgb } from '../src/lib/oklch';
 import { legacyWheelColor } from '../src/lib/migrate';
+import { encodeShare } from '../src/lib/share';
+import { defaultScheme, setParams } from '../src/lib/selectors';
 
 // jsdom has no canvas; both wheels guard a null 2D context, and we silence jsdom's
 // "not implemented" noise so real errors stay visible.
 beforeEach(() => {
   localStorage.clear();
+  window.location.hash = '';
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.stubGlobal(
@@ -71,7 +74,7 @@ describe('artist wheel selectors', () => {
     fireEvent.change(screen.getByLabelText(/^Selector$/i), { target: { value: 'roles' } });
     expect(handleRows().map((r) => r.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Background'), expect.stringContaining('Accent')]));
     fireEvent.click(screen.getByRole('button', { name: /add scheme to palette/i }));
-    const css = screen.getByText(/:root/).textContent ?? '';
+    const css = screen.getByLabelText('Palette CSS').textContent ?? '';
     expect(css).toMatch(/--background: #[0-9a-f]{6}/);
     expect(css).toMatch(/--accent: #[0-9a-f]{6}/);
     expect(css).not.toMatch(/--swatch-0/);
@@ -168,6 +171,27 @@ describe('artist wheel selectors', () => {
     expect(screen.getAllByRole('button', { name: /add ramp step/i })).toHaveLength(11);
     fireEvent.click(screen.getByRole('button', { name: /add ramp step 900/i }));
     expect(screen.getByText(/1 swatch/)).toBeInTheDocument();
+  });
+
+  it('a share link in the hash restores the scheme on the right wheel and clears the hash', () => {
+    const scheme = setParams(defaultScheme('split', { theta: 200, f: 0.6, l: 0.5 }), { spread: 40 });
+    window.location.hash = '#' + encodeShare({ wheel: 'depth', scheme });
+    render(<App />);
+    expect(screen.getByRole('heading', { name: /chromostereopsis/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Selector$/i)).toHaveValue('split');
+    expect(JSON.parse(localStorage.getItem(SCHEME_STORAGE_KEY)!).depth.params.spread).toBe(40);
+    expect(window.location.hash).toBe('');
+  });
+
+  it('export panel offers the scheme in several formats; colour-vision strips are shown', () => {
+    render(<App />);
+    const panel = screen.getByTestId('export-panel');
+    expect(within(panel).getByLabelText(/export preview/i)).toHaveTextContent(':root');
+    fireEvent.change(within(panel).getByLabelText(/export format/i), { target: { value: 'compose' } });
+    expect(within(panel).getByLabelText(/export preview/i)).toHaveTextContent('Color(0xFF');
+    fireEvent.change(within(panel).getByLabelText(/export format/i), { target: { value: 'android' } });
+    expect(within(panel).getByLabelText(/export preview/i)).toHaveTextContent('<color name="a_ff0101">#FF0101</color>');
+    expect(screen.getByTestId('cvd-strip')).toHaveTextContent('Deuteranopia');
   });
 
   it('free selector can add handles up to six', () => {
