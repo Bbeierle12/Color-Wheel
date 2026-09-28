@@ -7,13 +7,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { lightnessRamp, type Gamut } from '../../lib/oklch';
-import { contextSettings } from '../../lib/oklch/display';
+import { canvasGamutFor, canvasPaint, get2d } from '../../lib/oklch/display';
 
 export interface StripMark {
   id: string;
   l: number;
   /** CSS colour (hex or color(display-p3 …)). */
   fill: string;
+  /** sRGB fallback for canvases that cannot show P3. */
+  hex: string;
   label: string;
   active: boolean;
 }
@@ -42,7 +44,8 @@ export function LightnessStrip({ theta, f, value, gamut = 'srgb', marks, onChang
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
-    const ctx = canvas.getContext('2d', contextSettings(gamut));
+    const canvasGamut = canvasGamutFor(gamut);
+    const ctx = get2d(canvas, canvasGamut);
     if (!ctx) return;
     const w = Math.max(24, wrap.clientWidth);
     const h = Math.max(60, wrap.clientHeight);
@@ -60,7 +63,7 @@ export function LightnessStrip({ theta, f, value, gamut = 'srgb', marks, onChang
     const bw = Math.max(8, w - 16 - 6);
     for (let i = 0; i < STEPS; i++) {
       const y = PAD + inner - ((i + 1) / STEPS) * inner;
-      ctx.fillStyle = ramp[i].css;
+      ctx.fillStyle = canvasPaint(ramp[i], canvasGamut);
       ctx.fillRect(x0, y, bw, inner / STEPS + 1);
     }
     ctx.strokeStyle = 'rgba(0,0,0,0.25)';
@@ -71,7 +74,7 @@ export function LightnessStrip({ theta, f, value, gamut = 'srgb', marks, onChang
     for (const m of marks) {
       if (m.active) continue;
       const y = PAD + inner - m.l * inner;
-      ctx.fillStyle = m.fill;
+      ctx.fillStyle = canvasGamut === 'p3' ? m.fill : m.hex;
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       ctx.beginPath();
       ctx.moveTo(x0 + bw + 1, y);

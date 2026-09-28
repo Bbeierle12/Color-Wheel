@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { depthInput, fmtCm, pairWithSettings, type DepthColor } from './depthWheelModel';
+import { paint } from '../../lib/oklch/display';
 
 export type { DepthColor } from './depthWheelModel';
 
@@ -53,7 +54,7 @@ export function PairDepthList({ colors, background, backgroundLabel, dark = fals
         <span className={`text-[11px] ${muted}`}>
           {background ? (
             <>
-              on {backgroundLabel ?? 'background'} <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} align-[-2px] ml-1`} style={{ background: bgColor.css ?? bgColor.hex }} />
+              on {backgroundLabel ?? 'background'} <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} align-[-2px] ml-1`} style={{ background: paint(bgColor) }} />
             </>
           ) : (
             'Pairs, strongest first'
@@ -72,8 +73,8 @@ export function PairDepthList({ colors, background, backgroundLabel, dark = fals
       {rows.map(({ i, j, p }) => {
         const sw = (
           <>
-            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder}`} style={{ background: colors[i].css ?? colors[i].hex }} />
-            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} -ml-1`} style={{ background: colors[j].css ?? colors[j].hex }} />
+            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder}`} style={{ background: paint(colors[i]) }} />
+            <span className={`inline-block w-3 h-3 rounded-sm border ${swBorder} -ml-1`} style={{ background: paint(colors[j]) }} />
           </>
         );
         const names = (

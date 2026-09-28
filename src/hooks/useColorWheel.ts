@@ -21,7 +21,7 @@ import type { Sample, Complement, WheelTransform, Point, PaletteSwatch, TintShad
 import { MODEL, OFF_SIZE, OFF_SIZE_PREVIEW } from '../constants/wheelModel';
 import { renderWheelBitmap, drawDecor, drawHandles, coordToOff, offToPolar, HANDLE_HIT_PX, type HandleMark } from '../lib/wheelRenderer';
 import { coordToRgb, type Gamut } from '../lib/oklch';
-import { contextSettings } from '../lib/oklch/display';
+import { canvasGamutFor, canvasPaint, get2d } from '../lib/oklch/display';
 import { useChromaSettings } from './useChromaSettings';
 import {
   rgbToHex,
@@ -162,6 +162,8 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   const { artist: scheme, setArtist, activeArtist, setActiveArtist, sendToDepth, undo: undoWheel, redo: redoWheel, canUndo: canUndoWheel, canRedo: canRedoWheel } = useScheme();
   const { derived: chroma } = useChromaSettings();
   const gamut = chroma.gamut;
+  /** Colour space the canvases are created in: P3 only when the browser can; the bitmap bytes follow it. */
+  const canvasGamut = canvasGamutFor(gamut);
 
   // ── Canvas refs ──────────────────────────────────────────────────
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -242,21 +244,21 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   const renderFull = useCallback(
     (l: number) => {
       const off = offCanvasRef.current;
-      const ctx = off?.getContext('2d', contextSettings(gamut));
+      const ctx = off ? get2d(off, canvasGamut) : null;
       if (!off || !ctx) return;
-      renderWheelBitmap(ctx, l, OFF_SIZE, gamut);
+      renderWheelBitmap(ctx, l, OFF_SIZE, canvasGamut);
       bitmapLRef.current = l;
     },
-    [gamut],
+    [canvasGamut],
   );
   const renderPreview = useCallback(
     (l: number) => {
       const pv = previewCanvasRef.current;
-      const ctx = pv?.getContext('2d', contextSettings(gamut));
+      const ctx = pv ? get2d(pv, canvasGamut) : null;
       if (!pv || !ctx) return;
-      renderWheelBitmap(ctx, l, OFF_SIZE_PREVIEW, gamut);
+      renderWheelBitmap(ctx, l, OFF_SIZE_PREVIEW, canvasGamut);
     },
-    [gamut],
+    [canvasGamut],
   );
 
   // ── Drawing (uses a ref so effects don't re-fire the bitmap init) ─
@@ -265,7 +267,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     const canvas = canvasRef.current;
     const off = offCanvasRef.current;
     if (!canvas || !off) return;
-    const ctx = canvas.getContext('2d', contextSettings(gamut));
+    const ctx = get2d(canvas, canvasGamut);
     if (!ctx) return;
     const t = tfRef.current;
 
@@ -282,7 +284,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     if (showHandles) {
       const marks: HandleMark[] = handles.map((h) => {
         const p = handleCanvasPos(h);
-        return { id: h.id, label: h.label, x: p.x, y: p.y, fill: h.css, isBase: h.isBase, active: h.active, ghost: Math.abs(h.pos.l - lightness) > 0.002, mapped: h.mapped };
+        return { id: h.id, label: h.label, x: p.x, y: p.y, fill: canvasPaint(h, canvasGamut), isBase: h.isBase, active: h.active, ghost: Math.abs(h.pos.l - lightness) > 0.002, mapped: h.mapped };
       });
       drawHandles(ctx, t, centerC, marks, dragging ? null : pointerPt);
     }
@@ -316,7 +318,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
     const pv = document.createElement('canvas');
     pv.width = OFF_SIZE_PREVIEW;
     pv.height = OFF_SIZE_PREVIEW;
-    if (!off.getContext('2d', contextSettings(gamut))) return;
+    if (!get2d(off, canvasGamut)) return;
     offCanvasRef.current = off;
     previewCanvasRef.current = pv;
     bitmapLRef.current = NaN;

@@ -5,7 +5,9 @@
 
 import { useMemo } from 'react';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
-import { N_SECTORS, fmtCm, pairWithSettings, sectorCoord, sectorCss, sectorHue, type DepthHandle } from './depthWheelModel';
+import { N_SECTORS, fmtCm, pairWithSettings, sectorCoord, sectorHue, type DepthHandle } from './depthWheelModel';
+import { coordToRgb } from '../../lib/oklch';
+import { paint } from '../../lib/oklch/display';
 
 const W = 360;
 const H = 150;
@@ -54,7 +56,7 @@ export function DepthChart({ handles, reference }: DepthChartProps) {
               y={Math.min(yy, MID).toFixed(1)}
               width={(bw - 1.6).toFixed(1)}
               height={Math.max(Math.abs(yy - MID), 0.8).toFixed(1)}
-              fill={sectorCss(p.i, Math.max(s.wheelSaturation, 35), s.wheelLightness, gamut)}
+              fill={paint(coordToRgb(sectorCoord(p.i, Math.max(s.wheelSaturation, 35), s.wheelLightness, gamut), gamut))}
               opacity={p.ok ? 1 : 0.25}
             />
           );

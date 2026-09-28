@@ -17,6 +17,7 @@ import { useChromaSettings, WHEEL_LIGHTNESS_RANGE } from '../../hooks/useChromaS
 import { useScheme, type SentColor } from '../../hooks/useScheme';
 import { coordToRgb } from '../../lib/oklch';
 import { GamutControl } from '../ColorWheel/GamutControl';
+import { paint } from '../../lib/oklch/display';
 import { ShareButton } from '../Share/ShareButton';
 import { applyDrag, defaultScheme, referenceHandleId, shuffleScheme, snapTheta, toggleLock } from '../../lib/selectors';
 import { SelectorControls } from '../Selectors/SelectorControls';
@@ -82,7 +83,7 @@ export function DepthPage() {
   }, []);
 
   const sentBg = sent?.find((c) => c.role === 'background');
-  const sentCss = (c: SentColor) => (c.coord ? coordToRgb(c.coord, gamut).css : c.hex);
+  const sentCss = (c: SentColor) => (c.coord ? paint(coordToRgb(c.coord, gamut)) : c.hex);
   const sentColors: DepthColor[] = (sent ?? []).filter((c) => c !== sentBg).map((c) => ({ hex: c.hex, label: c.label, coord: c.coord, css: sentCss(c) }));
 
   return (

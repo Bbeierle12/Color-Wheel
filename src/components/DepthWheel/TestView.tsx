@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { depthInput, fmtCm, pairWithSettings, type DepthColor } from './depthWheelModel';
+import { paint } from '../../lib/oklch/display';
 
 interface TestViewProps {
   colors: DepthColor[];
@@ -75,12 +76,12 @@ export function TestView({ colors, onClose }: TestViewProps) {
       <div className="flex-1 flex flex-col items-center justify-center gap-8 px-4">
         <div className="flex flex-wrap justify-center gap-4 md:gap-6 max-w-2xl">
           {colors.map((c) => (
-            <div key={c.label} className="w-24 h-24 md:w-36 md:h-36 rounded-2xl" style={{ background: c.css ?? c.hex }} title={`${c.label} ${c.hex}`} />
+            <div key={c.label} className="w-24 h-24 md:w-36 md:h-36 rounded-2xl" style={{ background: paint(c) }} title={`${c.label} ${c.hex}`} />
           ))}
         </div>
         <div className="text-3xl md:text-5xl font-bold tracking-wide text-center leading-tight flex flex-wrap justify-center gap-x-4">
           {colors.map((c) => (
-            <span key={c.label} style={{ color: c.css ?? c.hex }}>
+            <span key={c.label} style={{ color: paint(c) }}>
               {c.label.toUpperCase()}
             </span>
           ))}

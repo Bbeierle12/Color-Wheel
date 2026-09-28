@@ -37,6 +37,11 @@ export function savedColorCss(c: SavedColor, gamut: Gamut): string {
   return c.coord ? coordToRgb(c.coord, gamut).css : c.hex;
 }
 
+/** The sRGB hex of a saved colour resolved in a gamut (its own hex when it has no coordinate). */
+export function savedColorHex(c: SavedColor, gamut: Gamut): string {
+  return c.coord ? coordToRgb(c.coord, gamut).hex : c.hex;
+}
+
 export interface SavedScheme {
   id: string;
   name: string;

@@ -6,9 +6,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GAP_PX, INNER_FRAC, N_SECTORS, OUTER_FRAC, angleAt, sectorCentre, sectorCss, type DepthHandle } from './depthWheelModel';
-import type { Gamut } from '../../lib/oklch';
-import { contextSettings } from '../../lib/oklch/display';
+import { GAP_PX, INNER_FRAC, N_SECTORS, OUTER_FRAC, angleAt, sectorCentre, sectorCoord, type DepthHandle } from './depthWheelModel';
+import { coordToRgb, type Gamut } from '../../lib/oklch';
+import { canvasGamutFor, canvasPaint, get2d } from '../../lib/oklch/display';
 
 interface DepthWheelProps {
   /** Gamut the sectors are drawn in (the canvas is created in that colour space). */
@@ -43,7 +43,8 @@ export function DepthWheel({ gamut = 'srgb', saturation, lightness, handles, act
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
-    const ctx = canvas.getContext('2d', contextSettings(gamut));
+    const canvasGamut = canvasGamutFor(gamut);
+    const ctx = get2d(canvas, canvasGamut);
     if (!ctx) return;
 
     const size = Math.max(120, Math.round(wrap.clientWidth));
@@ -75,7 +76,7 @@ export function DepthWheel({ gamut = 'srgb', saturation, lightness, handles, act
 
     for (let i = 0; i < N_SECTORS; i++) {
       sectorPath(i);
-      ctx.fillStyle = sectorCss(i, saturation, lightness, gamut);
+      ctx.fillStyle = canvasPaint(coordToRgb(sectorCoord(i, saturation, lightness, gamut), gamut), canvasGamut);
       ctx.fill();
     }
     ctx.strokeStyle = '#000';

@@ -5,7 +5,8 @@
 
 import { useState } from 'react';
 import type { SavedScheme } from '../../lib/library';
-import { savedColorCss, schemeToCss } from '../../lib/library';
+import { savedColorCss, savedColorHex, schemeToCss } from '../../lib/library';
+import { paint } from '../../lib/oklch/display';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { SELECTOR_TYPES } from '../../lib/selectors';
 import { useDepthVerdict } from '../../hooks/useDepthVerdict';
@@ -72,7 +73,7 @@ export function SchemeCard({ scheme: s, compact = false, vision = null, compared
       {/* Swatch strip */}
       <div className="flex h-10 rounded-xl overflow-hidden border border-zinc-200 relative">
         {s.colors.map((c, i) => (
-          <div key={i} className="flex-1" style={{ background: vision ? simulateHex(c.hex, vision) : savedColorCss(c, gamut) }} title={`${c.label} ${c.hex}`} />
+          <div key={i} className="flex-1" style={{ background: vision ? simulateHex(c.hex, vision) : paint({ css: savedColorCss(c, gamut), hex: savedColorHex(c, gamut) }) }} title={`${c.label} ${c.hex}`} />
         ))}
         {onToggleCompare && !compact && (
           <label className="absolute top-1 right-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/85 text-[10px] text-zinc-700 cursor-pointer">

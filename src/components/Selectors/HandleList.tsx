@@ -2,6 +2,8 @@
  * The handles of a scheme as selectable rows: swatch, label or role, hex.
  */
 
+import { paint } from '../../lib/oklch/display';
+
 export interface HandleRow {
   id: string;
   label: string;
@@ -63,7 +65,7 @@ export function HandleList({ handles, activeId, onSelect, onToggleLock, lockable
               {h.locked ? '🔒' : '🔓'}
             </span>
           )}
-          <span className="inline-block w-6 h-6 rounded-md border border-black/10 shrink-0" style={{ background: h.css ?? h.hex }} />
+          <span className="inline-block w-6 h-6 rounded-md border border-black/10 shrink-0" style={{ background: paint(h) }} />
           <span className="min-w-0">
             <span className={`block text-xs font-medium ${text} break-words`}>
               {h.label}

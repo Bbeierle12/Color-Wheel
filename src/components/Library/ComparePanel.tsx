@@ -3,7 +3,8 @@
  * live depth verdict.
  */
 
-import { savedColorCss, type SavedScheme } from '../../lib/library';
+import { savedColorCss, savedColorHex, type SavedScheme } from '../../lib/library';
+import { paint } from '../../lib/oklch/display';
 import { coordFromHex } from '../../lib/oklch';
 import { simulateHex, type CvdType } from '../../lib/cvd';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
@@ -24,7 +25,7 @@ function Column({ scheme: s, vision }: { scheme: SavedScheme; vision: CvdType | 
       <h3 className="text-sm font-semibold text-zinc-800 truncate">{s.name}</h3>
       <div className="flex h-10 rounded-xl overflow-hidden border border-zinc-200">
         {s.colors.map((c, i) => (
-          <div key={i} className="flex-1" style={{ background: vision ? simulateHex(c.hex, vision) : savedColorCss(c, gamut) }} title={`${c.label} ${c.hex}`} />
+          <div key={i} className="flex-1" style={{ background: vision ? simulateHex(c.hex, vision) : paint({ css: savedColorCss(c, gamut), hex: savedColorHex(c, gamut) }) }} title={`${c.label} ${c.hex}`} />
         ))}
       </div>
       {hasRoles && <RolePreview colors={s.colors} vision={vision} />}

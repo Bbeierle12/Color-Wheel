@@ -3,7 +3,8 @@
  * text, a primary button and an accent. Missing roles fall back sensibly.
  */
 
-import { savedColorCss, type SavedColor } from '../../lib/library';
+import { savedColorCss, savedColorHex, type SavedColor } from '../../lib/library';
+import { paint } from '../../lib/oklch/display';
 import { useChromaSettings } from '../../hooks/useChromaSettings';
 import { simulateHex, type CvdType } from '../../lib/cvd';
 
@@ -18,7 +19,7 @@ export function RolePreview({ colors, vision = null }: RolePreviewProps) {
   const role = (r: string) => {
     const c = colors.find((x) => x.role === r);
     if (!c) return undefined;
-    return vision ? simulateHex(c.hex, vision) : savedColorCss(c, derived.gamut);
+    return vision ? simulateHex(c.hex, vision) : paint({ css: savedColorCss(c, derived.gamut), hex: savedColorHex(c, derived.gamut) });
   };
   const background = role('background') ?? '#ffffff';
   const surface = role('surface') ?? background;

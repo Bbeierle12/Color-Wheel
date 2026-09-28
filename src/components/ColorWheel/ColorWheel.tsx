@@ -115,7 +115,7 @@ export function ColorWheel({ onNavigate }: ColorWheelProps) {
                   theta={active.pos.theta}
                   f={active.pos.f}
                   value={lightness}
-                  marks={handles.map((h) => ({ id: h.id, l: h.pos.l, fill: h.css, label: h.label, active: h.active }))}
+                  marks={handles.map((h) => ({ id: h.id, l: h.pos.l, fill: h.css, hex: h.hex, label: h.label, active: h.active }))}
                   onChange={setLightness}
                   onSelect={setActive}
                 />

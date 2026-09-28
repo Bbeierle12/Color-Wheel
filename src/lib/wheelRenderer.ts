@@ -11,7 +11,7 @@ import type { RGB, WheelTransform, Point } from '../types';
 import { MODEL, OFF_SIZE, CHROMA_RINGS, HUE_LABELS } from '../constants/wheelModel';
 import { clamp01 } from '../utils/colorMath';
 import { C_SCALE, coordToRgb, gamutBoundary, renderSlice, type Gamut, type WheelCoord } from './oklch';
-import { imageDataSettings } from './oklch/display';
+import { createImageData2d } from './oklch/display';
 
 // -------------------- Geometry Functions --------------------
 
@@ -85,8 +85,7 @@ export const GHOST_ALPHA = 92;
  * to match, so the bytes are interpreted as P3.
  */
 export function renderWheelBitmap(offCtx: CanvasRenderingContext2D, l: number, size = OFF_SIZE, gamut: Gamut = 'srgb'): void {
-  const settings = imageDataSettings(gamut);
-  const img = settings ? offCtx.createImageData(size, size, settings) : offCtx.createImageData(size, size);
+  const img = createImageData2d(offCtx, size, size, gamut);
   renderSlice(img.data, {
     size,
     radius: (MODEL.R_color / OFF_SIZE) * size,

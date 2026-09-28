@@ -4,6 +4,7 @@
 
 import type { PaletteSwatch, TintShadeStep } from '../../types';
 import { PaletteDepth } from '../DepthWheel/PaletteDepth';
+import { paint } from '../../lib/oklch/display';
 
 interface PaletteManagerProps {
   palette: PaletteSwatch[];
@@ -48,7 +49,7 @@ export function PaletteManager({
             className={`w-[40px] h-[30px] rounded-lg border ${t.isBase ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'} relative`}
             title={`${t.label}: ${t.css ?? t.hex}`}
             aria-label={`Add ramp step ${t.label}`}
-            style={{ background: t.css ?? t.hex }}
+            style={{ background: paint(t) }}
             onClick={() => onAddTint(t)}
           >
             <span className="absolute -bottom-3.5 left-0 right-0 text-[9px] text-zinc-500 text-center leading-none">{t.label}</span>
@@ -94,7 +95,7 @@ export function PaletteManager({
             type="button"
             className="w-[46px] h-[28px] rounded-lg border border-zinc-200 relative group"
             title={`${swatch.role ? `${swatch.role} · ` : ''}${swatch.name}: ${swatch.hex}`}
-            style={{ background: swatch.css ?? swatch.hex }}
+            style={{ background: paint(swatch) }}
             onClick={() => onRemoveSwatch(swatch.id)}
           >
             <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/30 rounded-lg text-white text-xs">
