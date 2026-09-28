@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMixingCanvas } from '../../hooks/useMixingCanvas';
 import type { ToolType, PaintMedium } from '../../hooks/useMixingCanvas';
-import { useColorLibrary } from '../../hooks/useColorLibrary';
+import { useSchemeLibrary } from '../../hooks/useSchemeLibrary';
 import type { RGB } from '../../types';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -75,7 +75,7 @@ function useCanvasSize(containerRef: React.RefObject<HTMLDivElement | null>) {
 export function SketchPage(_props: SketchPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { w: canvasW, h: canvasH } = useCanvasSize(containerRef);
-  const { combos } = useColorLibrary();
+  const { schemes: combos } = useSchemeLibrary();
 
   const {
     canvasRef,
@@ -273,7 +273,7 @@ export function SketchPage(_props: SketchPageProps) {
                   >
                     <div className="text-[10px] font-medium text-zinc-600 truncate mb-0.5">{combo.name}</div>
                     <div className="flex flex-wrap gap-0.5">
-                      {combo.colors.map((hex, i) => {
+                      {combo.colors.map(({ hex }, i) => {
                         const clean = hex.replace(/^#/, '');
                         const n = parseInt(clean, 16);
                         const rgb: RGB = { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };

@@ -4,7 +4,7 @@
 
 import type { RGB, WheelTransform, Point } from '../types';
 import { MODEL, OFF_SIZE, RING_FRACS, HUE_LABELS } from '../constants/wheelModel';
-import { hslToRgb } from '../utils/colorConversions';
+import { hslToRgb, rgbToHsl } from '../utils/colorConversions';
 import { clamp01 } from '../utils/colorMath';
 
 // -------------------- Geometry Functions --------------------
@@ -112,6 +112,20 @@ export function wheelColorAtPolar(theta: number, f: number): RGB {
   const q = polarToOff(theta, Math.min(0.999, Math.max(0.001, f)));
   const d = wheelColorAt(q.x, q.y);
   return d ? { r: d.r, g: d.g, b: d.b } : { r: 255, g: 255, b: 255 };
+}
+
+/**
+ * Closest wheel position for an arbitrary colour: hue gives theta; the radial
+ * profile is inverted from the colour's HSL lightness. The wheel cannot show
+ * every colour (its profile fixes saturation per radius), so the colour at the
+ * returned position is the nearest the wheel offers, not an exact match.
+ */
+export function polarForColor(r: number, g: number, b: number): { theta: number; f: number } {
+  const hsl = rgbToHsl(r, g, b);
+  // Invert l = 0.92 - 0.42 * f^0.85 (ignoring the rim boost, which only darkens the outer 16%).
+  const f = clamp01(Math.pow(clamp01((0.92 - hsl.l) / 0.42), 1 / 0.85));
+  // Greys have no hue; keep theta 0 and let f carry the value.
+  return { theta: hsl.s < 0.02 ? 0 : hsl.h, f };
 }
 
 // -------------------- Bitmap Rendering --------------------

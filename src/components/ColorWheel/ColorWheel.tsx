@@ -16,14 +16,15 @@ import { useState } from 'react';
 import { useColorWheel } from '../../hooks/useColorWheel';
 import { Sidebar } from './Sidebar';
 import { MixingPad } from '../MixingPad';
-import { ColorLibrary } from '../ColorLibrary';
+import { RecentSchemes } from '../Library';
+import type { AppPage } from '../NavRail';
 
 interface ColorWheelProps {
-  /** Called after a scheme is sent to the Depth tab, so the app can switch to it. */
-  onOpenDepth?: () => void;
+  /** Switch page, e.g. after sending a scheme to Depth or opening the library. */
+  onNavigate?: (page: AppPage) => void;
 }
 
-export function ColorWheel({ onOpenDepth }: ColorWheelProps) {
+export function ColorWheel({ onNavigate }: ColorWheelProps) {
   const [showDecor, setShowDecor] = useState(true);
   const [showHandles, setShowHandles] = useState(true);
   const [tintSteps, setTintSteps] = useState(7);
@@ -48,7 +49,6 @@ export function ColorWheel({ onOpenDepth }: ColorWheelProps) {
     clearPalette,
     paletteCss,
     copyPaletteCss,
-    loadColors,
     sendSchemeToDepth,
     onPointerMove,
     onPointerDown,
@@ -80,7 +80,7 @@ export function ColorWheel({ onOpenDepth }: ColorWheelProps) {
           </div>
 
           <MixingPad selectedColor={selectedRgb} />
-          <ColorLibrary palette={palette} onRecall={loadColors} />
+          <RecentSchemes onOpenLibrary={() => onNavigate?.('library')} onOpenDepth={() => onNavigate?.('depth')} />
         </div>
 
         <Sidebar
@@ -109,7 +109,7 @@ export function ColorWheel({ onOpenDepth }: ColorWheelProps) {
           onCopyCss={copyPaletteCss}
           onSendToDepth={() => {
             sendSchemeToDepth();
-            onOpenDepth?.();
+            onNavigate?.('depth');
           }}
         />
       </div>

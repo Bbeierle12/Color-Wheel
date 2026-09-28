@@ -42,8 +42,8 @@ export interface UsePaletteReturn {
   removeSwatch: (id: string) => void;
   clearPalette: () => void;
   copyPaletteCss: () => Promise<void>;
-  /** Replace the entire palette with an array of hex strings (e.g. from a saved combo) */
-  loadColors: (hexColors: string[]) => void;
+  /** Replace the entire palette with hex strings or {hex, role, name} entries (e.g. from a saved scheme). */
+  loadColors: (colors: (string | { hex: string; role?: string; name?: string })[]) => void;
 }
 
 const MAX_SWATCHES = 24;
@@ -123,11 +123,12 @@ export function usePalette(): UsePaletteReturn {
     setPalette([]);
   }, []);
 
-  const loadColors = useCallback((hexColors: string[]) => {
-    const swatches: PaletteSwatch[] = hexColors
+  const loadColors = useCallback((colors: (string | { hex: string; role?: string; name?: string })[]) => {
+    const swatches: PaletteSwatch[] = colors
       .slice(0, MAX_SWATCHES)
-      .map((hex) => {
-        const clean = hex.replace(/^#/, '');
+      .map((c) => {
+        const entry = typeof c === 'string' ? { hex: c } : c;
+        const clean = entry.hex.replace(/^#/, '');
         const n = parseInt(clean, 16);
         const r = (n >> 16) & 0xff;
         const g = (n >> 8) & 0xff;
@@ -139,7 +140,8 @@ export function usePalette(): UsePaletteReturn {
           hex: rgbToHex(r, g, b),
           rgb,
           hsl,
-          name: `${hueName(hsl.h)} ${hsl.h.toFixed(0)}°`,
+          name: entry.name ?? `${hueName(hsl.h)} ${hsl.h.toFixed(0)}°`,
+          role: entry.role,
         };
       });
     setPalette(swatches);

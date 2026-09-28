@@ -24,6 +24,7 @@ import { PairDepthList, type DepthColor } from './PairDepthList';
 import { EyeModelPanel } from './EyeModelPanel';
 import { TestView } from './TestView';
 import { N_SECTORS, resolveDepthHandles } from './depthWheelModel';
+import { SaveSchemeForm } from '../Library/SaveSchemeForm';
 
 const btn = (on = false) =>
   `px-3 py-2 text-xs rounded-xl border min-h-[40px] ${on ? 'border-violet-500 bg-violet-700 text-white' : 'border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'}`;
@@ -133,6 +134,9 @@ export function DepthPage() {
             <SelectorControls scheme={scheme} onChange={setDepth} depthWheel dark activeHandle={activeId} />
             <div className="mt-3">
               <HandleList handles={handles} activeId={activeId} onSelect={setActiveDepth} dark />
+            </div>
+            <div className="mt-3">
+              <SaveSchemeForm wheel="depth" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role }))} dark />
             </div>
 
             <div className="mt-5">

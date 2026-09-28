@@ -50,7 +50,7 @@ import {
 import { hueName, temperatureLabel } from '../utils/artistDescriptors';
 import { applyDrag, resolveHandles, type Handle, type Polar, type SchemeState } from '../lib/selectors';
 import { useScheme, type SentColor } from './useScheme';
-import { usePalette } from './usePalette';
+import { usePaletteContext } from './usePaletteContext';
 import { useTintShades } from './useTintShades';
 
 interface UseColorWheelOptions {
@@ -90,7 +90,7 @@ interface UseColorWheelReturn {
   clearPalette: () => void;
   paletteCss: string;
   copyPaletteCss: () => Promise<void>;
-  loadColors: (hexColors: string[]) => void;
+  loadColors: (colors: (string | { hex: string; role?: string; name?: string })[]) => void;
   sendSchemeToDepth: () => void;
 
   onPointerMove: (e: React.PointerEvent<HTMLCanvasElement>) => void;
@@ -164,7 +164,7 @@ export function useColorWheel(options: UseColorWheelOptions = {}): UseColorWheel
   const activeHandle = handles.find((h) => h.id === activeId) ?? handles[0];
 
   // ── Extracted hooks ──────────────────────────────────────────────
-  const { palette, paletteCss, addSwatch, addSwatches, addTintSwatch, removeSwatch, clearPalette, copyPaletteCss, loadColors } = usePalette();
+  const { palette, paletteCss, addSwatch, addSwatches, addTintSwatch, removeSwatch, clearPalette, copyPaletteCss, loadColors } = usePaletteContext();
   const tints = useTintShades(activeHandle.rgb, activeHandle.hex, tintSteps);
 
   // ── Coordinate helpers (stable — no deps) ────────────────────────

@@ -11,6 +11,7 @@ import { PaletteManager } from './PaletteManager';
 import { SelectorControls } from '../Selectors/SelectorControls';
 import { HandleList } from '../Selectors/HandleList';
 import { PairDepthList } from '../DepthWheel/PairDepthList';
+import { SaveSchemeForm } from '../Library/SaveSchemeForm';
 
 interface SidebarProps {
   sample: Sample | null;
@@ -101,6 +102,9 @@ export function Sidebar({
         <button className="px-3 py-2 text-xs rounded-xl border border-zinc-900 bg-zinc-900 text-white" onClick={onSendToDepth} type="button">
           Send to Depth
         </button>
+      </div>
+      <div className="mt-3">
+        <SaveSchemeForm wheel="artist" scheme={scheme} colors={handles.map((h) => ({ hex: h.hex, label: h.label, role: h.role }))} />
       </div>
 
       {/* Chromostereopsis for the scheme */}

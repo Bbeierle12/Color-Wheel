@@ -9,6 +9,7 @@ An artist-friendly color wheel built with React, TypeScript, and Canvas. Feature
 - **Procedural Wheel**: No images - colors are generated mathematically with hue mapped to angle and tint/shade variations across the radius
 - **Scheme selectors**: Complementary, split complementary, analogous, triadic, tetradic, monochrome, free (up to six) and roles (background, surface, text, primary, accent). Handles are drawn on the wheel: tap to place the base, drag the base to rotate the whole scheme, drag a derived handle to change that selector's parameter (spread, spacing, rectangle offset), and drag freely on Free/Roles.
 - **Palette Builder**: Capture swatches or a whole scheme from the wheel and export as CSS custom properties, named by role (`--background`, `--accent`) when the scheme has roles
+- **Scheme library**: Save schemes with their structure (selector, base, parameters, roles), not just their colours. A Library tab lists them with swatches, a mock UI preview for role schemes, a live chromostereopsis verdict, search, filters and sort; load any entry back onto the artist wheel (handles restored), to the Depth tab, or into the palette. Five built-in starters. Export/import the library as JSON. Stored in the browser; combos saved by earlier versions are migrated automatically.
 - **Artist-Friendly Descriptors**: Hue family names, warm/cool temperature, value and chroma proxies
 - **Technical Color Data**: Full color space conversions including HSL, HSV, HWB, CMYK, XYZ, Lab, LCH, OKLab, OKLCH
 - **Accessibility**: WCAG contrast ratios against white and black backgrounds
@@ -82,13 +83,24 @@ src/
 │   ├── Selectors/
 │   │   ├── SelectorControls.tsx # Selector picker + parameters (both wheels)
 │   │   └── HandleList.tsx      # Handles as selectable rows
-│   └── SchemeProvider.tsx      # Scheme state for both wheels + sent colours
+│   ├── Library/
+│   │   ├── LibraryPage.tsx     # Saved schemes: search, filter, sort, export/import
+│   │   ├── SchemeCard.tsx      # One entry: swatches, badges, depth verdict, actions
+│   │   ├── RolePreview.tsx     # Mock UI from a scheme's roles
+│   │   ├── SaveSchemeForm.tsx  # Save the scheme on either wheel
+│   │   └── RecentSchemes.tsx   # Compact strip on the artist page
+│   ├── SchemeProvider.tsx      # Scheme state for both wheels + sent colours
+│   ├── SchemeLibraryProvider.tsx
+│   └── PaletteProvider.tsx
 ├── hooks/
 │   ├── useColorWheel.ts        # Canvas, pointer/drag, sampling
 │   ├── useScheme.ts            # Scheme store (localStorage)
+│   ├── useSchemeLibrary.ts     # Saved schemes, starters, v1 migration (localStorage)
+│   ├── useSchemeLoader.ts      # Load an entry to a wheel / palette; save from a wheel
 │   └── useChromaSettings.ts    # Shared eye model + calibration (localStorage)
 ├── lib/
 │   ├── selectors/              # Scheme selectors: resolve handles, apply drags
+│   ├── library/                # Saved-scheme format, sanitising, export/import, starters
 │   └── chromostereopsis/       # Pure physics + colour model
 ├── utils/
 │   ├── colorMath.ts            # Math utilities

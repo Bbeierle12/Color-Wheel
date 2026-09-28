@@ -1,9 +1,9 @@
 /**
  * NavRail – slim vertical navigation on the left edge of the app.
- * Switches between the Color Wheel, Depth (chromostereopsis) and Sketch pages.
+ * Switches between the Color Wheel, Depth (chromostereopsis), Library and Sketch pages.
  */
 
-export type AppPage = 'wheel' | 'depth' | 'sketch';
+export type AppPage = 'wheel' | 'depth' | 'library' | 'sketch';
 
 interface NavRailProps {
   activePage: AppPage;
@@ -13,6 +13,7 @@ interface NavRailProps {
 const TABS: { id: AppPage; icon: string; label: string }[] = [
   { id: 'wheel', icon: '🎨', label: 'Color Wheel' },
   { id: 'depth', icon: '👁️', label: 'Depth (chromostereopsis)' },
+  { id: 'library', icon: '📚', label: 'Scheme library' },
   { id: 'sketch', icon: '🖌️', label: 'Sketch' },
 ];
 
